@@ -1,0 +1,12 @@
+requests
+SpeechRecognition
+edge-tts
+pygame
+pywhatkit
+opencv-python
+pyautogui
+pygetwindow
+psutil
+flask
+flask-socketio
+pyaudio

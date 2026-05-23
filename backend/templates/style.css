@@ -1,0 +1,194 @@
+body{
+  margin:0;
+  overflow:hidden;
+  background:black;
+  font-family:Arial,sans-serif;
+}
+
+/* Main Screen */
+.intro{
+  position:relative;
+  width:100%;
+  height:100vh;
+
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  flex-direction:column;
+
+  background:radial-gradient(circle,#001133 0%,#000000 70%);
+
+  animation:screenFade 2s ease;
+}
+
+/* Animated Blue Glow */
+.glow{
+  position:absolute;
+  width:350px;
+  height:350px;
+  background:#0077ff;
+  border-radius:50%;
+  filter:blur(120px);
+
+  opacity:0.4;
+
+  animation:
+    glowPulse 4s infinite,
+    fadeIn 2s ease;
+}
+
+/* Logo */
+.logo{
+  width:220px;
+
+  z-index:2;
+
+  border-radius:20px;
+
+  filter:
+    drop-shadow(0 0 10px #0088ff)
+    drop-shadow(0 0 25px #00aaff)
+    drop-shadow(0 0 50px #00ccff);
+
+  animation:
+    logoReveal 2s ease,
+    float 4s ease-in-out infinite,
+    logoGlow 3s infinite;
+}
+
+/* Main Text */
+h1{
+  color:#00aaff;
+
+  margin-top:25px;
+
+  font-size:52px;
+  letter-spacing:8px;
+
+  z-index:2;
+
+  animation:
+    textReveal 2s ease,
+    glowText 3s infinite;
+}
+
+/* Subtitle */
+p{
+  color:gold;
+
+  letter-spacing:4px;
+
+  margin-top:10px;
+
+  z-index:2;
+
+  opacity:0.9;
+
+  animation:fadeIn 4s ease;
+}
+
+/* Floating */
+@keyframes float{
+  0%,100%{
+    transform:translateY(0px);
+  }
+
+  50%{
+    transform:translateY(-15px);
+  }
+}
+
+/* Glow Pulse */
+@keyframes glowPulse{
+  0%,100%{
+    transform:scale(1);
+    opacity:0.3;
+  }
+
+  50%{
+    transform:scale(1.2);
+    opacity:0.6;
+  }
+}
+
+/* Text Glow */
+@keyframes glowText{
+  0%,100%{
+    text-shadow:
+      0 0 10px #0088ff,
+      0 0 20px #0088ff;
+  }
+
+  50%{
+    text-shadow:
+      0 0 20px #00ccff,
+      0 0 50px #00ccff,
+      0 0 80px #00ccff;
+  }
+}
+
+/* Logo Reveal */
+@keyframes logoReveal{
+  0%{
+    opacity:0;
+    transform:scale(0.5);
+  }
+
+  100%{
+    opacity:1;
+    transform:scale(1);
+  }
+}
+
+/* Text Reveal */
+@keyframes textReveal{
+  0%{
+    opacity:0;
+    transform:translateY(40px);
+  }
+
+  100%{
+    opacity:1;
+    transform:translateY(0);
+  }
+}
+
+/* Screen Fade */
+@keyframes screenFade{
+  0%{
+    opacity:0;
+  }
+
+  100%{
+    opacity:1;
+  }
+}
+
+/* Fade In */
+@keyframes fadeIn{
+  0%{
+    opacity:0;
+  }
+
+  100%{
+    opacity:1;
+  }
+}
+
+/* Logo Glow */
+@keyframes logoGlow{
+
+  0%,100%{
+    filter:
+      drop-shadow(0 0 10px #0088ff)
+      drop-shadow(0 0 25px #00aaff)
+      drop-shadow(0 0 50px #00ccff);
+  }
+
+  50%{
+    filter:
+      drop-shadow(0 0 20px #00ccff)
+      drop-shadow(0 0 50px #00ccff)
+      drop-shadow(0 0 100px #66ffff);
+  }
+}

@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Secure Jarvis AI Agent</title>
+  </head>
+  <body>
+    <main class="app-shell" data-status="sleeping">
+      <div class="grid-layer"></div>
+      <div class="light-field light-a"></div>
+      <div class="light-field light-b"></div>
+      <section class="boot-sequence" id="bootSequence">
+        <div class="boot-ring"></div>
+        <div class="boot-panel">
+          <p>Initiating Command Panel</p>
+          <h1>JARVIS</h1>
+          <span id="bootLine">Loading neural interface...</span>
+          <div class="boot-progress"><i></i></div>
+        </div>
+      </section>
+
+      <section class="view active" id="homeView">
+        <aside class="panel">
+          <div class="panel-title"><span></span><h2>Backend</h2></div>
+          <div class="hero-status">
+            <p>Connection</p>
+            <strong id="backendState">Connecting</strong>
+            <span id="backendHint">Waiting for Flask Socket.IO.</span>
+          </div>
+          <div class="readout-list">
+            <article><span>Socket</span><strong id="socketReadout">Waiting</strong></article>
+            <article><span>AI Route</span><strong>DeepSeek / OpenRouter</strong></article>
+            <article><span>Activation</span><strong>Voice Ready</strong></article>
+            <article><span>Mode</span><strong id="modeReadout">Sleeping</strong></article>
+          </div>
+          <button class="clap-button" id="clapButton" type="button">Enable Clap Switch</button>
+          <p class="clap-hint" id="clapHint">Uses your browser microphone for double-clap switching.</p>
+        </aside>
+
+        <section class="home-core">
+          <div class="home-title">
+            <p>Command Panel</p>
+            <h1>JARVIS ONLINE</h1>
+            <span>Command systems, chat, and voice core are ready.</span>
+          </div>
+          <div class="reactor small-reactor">
+            <div class="ring ring-1"></div>
+            <div class="ring ring-2"></div>
+            <div class="ring ring-3"></div>
+            <div class="scanner"></div>
+            <div class="core"><strong id="homeCoreLabel">SLEEPING</strong></div>
+          </div>
+          <div class="message-card">
+            <p>Jarvis Status</p>
+            <h2 id="homeMessage">Standing by for your command.</h2>
+          </div>
+        </section>
+
+        <aside class="panel">
+          <div class="panel-title"><span></span><h2>Time & Weather</h2></div>
+          <section class="weather-card">
+            <p id="weatherLocation">Weather</p>
+            <strong id="weatherTemp">Loading</strong>
+            <span id="weatherDetails">Fetching live weather...</span>
+          </section>
+          <div class="panel-title compact"><span></span><h2>Timeline</h2></div>
+          <div class="timeline" id="timeline"></div>
+        </aside>
+      </section>
+
+      <section class="view chat-layout" id="chatView">
+        <aside class="panel chat-side">
+          <div class="panel-title"><span></span><h2>Chat System</h2></div>
+          <div class="readout-list">
+            <article><span>Backend</span><strong id="chatBackend">Waiting</strong></article>
+            <article><span>Model</span><strong>DeepSeek Chat</strong></article>
+            <article><span>Input</span><strong>Keyboard</strong></article>
+          </div>
+        </aside>
+
+        <section class="chat-panel">
+          <div class="chat-header">
+            <div>
+              <p class="eyebrow">Typed Conversation</p>
+              <h2>Ask Jarvis Anything</h2>
+            </div>
+            <span id="chatStatus">Ready</span>
+          </div>
+          <div class="messages" id="messages">
+            <article class="message assistant">
+              <span>Jarvis</span>
+              <p>Online. Type a question and I will answer through your backend AI route.</p>
+            </article>
+          </div>
+          <form class="chat-form" id="chatForm">
+            <input id="chatInput" autocomplete="off" placeholder="Type your question..." />
+            <button type="submit">Send</button>
+          </form>
+        </section>
+      </section>
+
+      <section class="view voice-layout" id="voiceView">
+        <section class="voice-stage">
+          <canvas id="particleCanvas" width="900" height="620" aria-label="Jarvis particle core"></canvas>
+          <div class="core-brand">
+            <span>J.A.R.V.I.S CORE</span>
+            <strong>V9.1</strong>
+          </div>
+          <div class="corner corner-tl"></div>
+          <div class="corner corner-tr"></div>
+          <div class="corner corner-bl"></div>
+          <div class="corner corner-br"></div>
+          <div class="side-eq side-eq-left"></div>
+          <div class="side-eq side-eq-right"></div>
+
+          <div class="voice-bottom-hud">
+            <div>
+              <p>Core</p>
+              <strong>JARVIS CORE</strong>
+            </div>
+            <div class="wave-strip"></div>
+            <div>
+              <p id="voiceStateMessage">Standing by for your command.</p>
+              <strong id="voiceState">Sleeping</strong>
+            </div>
+          </div>
+          <div class="voice-bars" id="voiceBars"></div>
+        </section>
+      </section>
+    </main>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
