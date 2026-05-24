@@ -41,11 +41,7 @@ const weatherCodes = {
   63: "Rain",
   65: "Heavy rain",
   80: "Rain showers",
-  81: "Rain showers",
-  82: "Heavy showers",
   95: "Thunderstorm",
-  96: "Thunderstorm",
-  99: "Thunderstorm",
 };
 
 const el = {
@@ -84,18 +80,10 @@ let clapStream = null;
 let clapAudioContext = null;
 
 const bootLines = [
-  "Neural interface loading...",
-  "Quantum signal matrix calibrating...",
-  "Encryption lattice stabilizing...",
-  "Predictive command core synchronizing...",
-  "Jarvis interface ready.",
-];
-
-const bootVoiceLines = [
-  "Neural interface online.",
-  "Quantum signal matrix calibrating.",
-  "Encryption lattice stabilized.",
-  "Predictive command core synchronized.",
+  "Loading neural interface...",
+  "Calibrating voice matrix...",
+  "Mounting command panel...",
+  "Syncing backend telemetry...",
   "Jarvis interface ready.",
 ];
 
@@ -113,12 +101,10 @@ function updateClock() {
 
 function runBootSequence() {
   let index = 0;
-  speakBootLine(bootVoiceLines[0], true);
 
   const timer = setInterval(() => {
     index += 1;
     el.bootLine.textContent = bootLines[index] || bootLines[bootLines.length - 1];
-    speakBootLine(bootVoiceLines[index] || bootVoiceLines[bootVoiceLines.length - 1]);
 
     if (index >= bootLines.length - 1) {
       clearInterval(timer);
@@ -127,27 +113,6 @@ function runBootSequence() {
       }, 900);
     }
   }, 620);
-}
-
-function speakBootLine(text, reset = false) {
-  if (!("speechSynthesis" in window) || !("SpeechSynthesisUtterance" in window)) {
-    return;
-  }
-
-  try {
-    if (reset) {
-      window.speechSynthesis.cancel();
-    }
-
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = "en-US";
-    utterance.rate = 0.92;
-    utterance.pitch = 0.72;
-    utterance.volume = 0.78;
-    window.speechSynthesis.speak(utterance);
-  } catch (error) {
-    console.warn("Boot voice unavailable:", error);
-  }
 }
 
 function setView(viewName) {
@@ -207,11 +172,10 @@ function setStatus(status, message) {
   const cleanStatus = String(status || "idle").toLowerCase();
   const label = statusNames[cleanStatus] || cleanStatus;
   const cleanMessage = message || "Status updated.";
-  const sleepMode = isSleepMode(cleanStatus, cleanMessage);
 
   state.status = cleanStatus;
   state.message = cleanMessage;
-  state.particleBoost = !sleepMode && ["speaking", "listening", "processing", "executing", "heard"].includes(cleanStatus) ? 1 : 0;
+  state.particleBoost = ["speaking", "listening", "processing", "executing", "heard"].includes(cleanStatus) ? 1 : 0;
 
   el.shell.dataset.status = cleanStatus;
   el.modeReadout.textContent = label;
@@ -221,10 +185,6 @@ function setStatus(status, message) {
   el.voiceStateMessage.textContent = cleanMessage;
 
   addTimeline(cleanStatus, cleanMessage);
-}
-
-function isSleepMode(status = state.status, message = state.message) {
-  return status === "sleeping" || (status === "listening" && /wake word/i.test(message || ""));
 }
 
 function addMessage(role, text) {
@@ -372,13 +332,13 @@ function initChat() {
 async function loadWeather(lat = 12.9716, lon = 77.5946, label = "Bengaluru") {
   try {
     el.weatherLocation.textContent = label;
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m&timezone=Asia%2FKolkata`;
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m`;
     const response = await fetch(url);
     const data = await response.json();
     const current = data.current;
 
     el.weatherTemp.textContent = `${Math.round(current.temperature_2m)} deg C`;
-    el.weatherDetails.textContent = `${weatherCodes[current.weather_code] || "Live weather"} | Feels ${Math.round(current.apparent_temperature)} deg C | Humidity ${current.relative_humidity_2m}% | Wind ${Math.round(current.wind_speed_10m)} km/h`;
+    el.weatherDetails.textContent = `${weatherCodes[current.weather_code] || "Live weather"} | Humidity ${current.relative_humidity_2m}% | Wind ${Math.round(current.wind_speed_10m)} km/h`;
   } catch (error) {
     el.weatherTemp.textContent = "Unavailable";
     el.weatherDetails.textContent = "Weather needs internet access.";
@@ -386,7 +346,16 @@ async function loadWeather(lat = 12.9716, lon = 77.5946, label = "Bengaluru") {
 }
 
 function initWeather() {
-  loadWeather(12.9716, 77.5946, "Bangalore, India");
+  if (!navigator.geolocation) {
+    loadWeather();
+    return;
+  }
+
+  navigator.geolocation.getCurrentPosition(
+    (position) => loadWeather(position.coords.latitude, position.coords.longitude, "Your location"),
+    () => loadWeather(),
+    { timeout: 5000, maximumAge: 900000 }
+  );
 }
 
 function initVoiceBars() {
@@ -460,7 +429,7 @@ function initParticles() {
     const speaking = state.status === "speaking";
     const thinking = state.status === "processing";
     const active = boost > 0;
-    const sleeping = isSleepMode();
+    const sleeping = state.status === "sleeping";
     const base = Math.min(w, h) / devicePixelRatio;
     const ringBase = Math.min(210, base * 0.28);
 
@@ -469,80 +438,80 @@ function initParticles() {
     ctx.fillRect(0, 0, w, h);
 
     const halo = ctx.createRadialGradient(cx, cy, 10, cx, cy, Math.min(w, h) * 0.48);
-    halo.addColorStop(0, sleeping ? "rgba(103, 232, 249, 0.24)" : speaking ? "rgba(134, 239, 172, 0.3)" : "rgba(103, 232, 249, 0.28)");
-    halo.addColorStop(0.32, sleeping ? "rgba(34, 211, 238, 0.08)" : thinking ? "rgba(250, 204, 21, 0.12)" : "rgba(34, 211, 238, 0.08)");
+    halo.addColorStop(0, sleeping ? "rgba(51, 65, 85, 0.1)" : speaking ? "rgba(134, 239, 172, 0.3)" : "rgba(103, 232, 249, 0.28)");
+    halo.addColorStop(0.32, sleeping ? "rgba(15, 23, 42, 0.05)" : thinking ? "rgba(250, 204, 21, 0.12)" : "rgba(34, 211, 238, 0.08)");
     halo.addColorStop(1, "rgba(2, 6, 23, 0)");
     ctx.fillStyle = halo;
     ctx.fillRect(0, 0, w, h);
 
-    drawRing(cx, cy, ringBase * 1.12, sleeping ? "rgba(103, 232, 249, 0.22)" : "rgba(103, 232, 249, 0.32)", 1.2, [8, 22]);
-    drawRing(cx, cy, ringBase * 1.38, sleeping ? "rgba(45, 212, 191, 0.14)" : "rgba(45, 212, 191, 0.22)", 1, [16, 28]);
-    drawRing(cx, cy, ringBase * 1.72, sleeping ? "rgba(103, 232, 249, 0.1)" : "rgba(103, 232, 249, 0.12)", 1, [3, 18]);
+    drawRing(cx, cy, ringBase * 1.12, sleeping ? "rgba(71, 85, 105, 0.16)" : "rgba(103, 232, 249, 0.32)", 1.2, [8, 22]);
+    drawRing(cx, cy, ringBase * 1.38, sleeping ? "rgba(51, 65, 85, 0.14)" : "rgba(45, 212, 191, 0.22)", 1, [16, 28]);
+    drawRing(cx, cy, ringBase * 1.72, sleeping ? "rgba(51, 65, 85, 0.08)" : "rgba(103, 232, 249, 0.12)", 1, [3, 18]);
     const points = [];
     const sphereRadius = ringBase * (1.18 + boost * 0.14) * devicePixelRatio;
     const rotY = tick * 0.006 * (1 + boost * 1.8);
     const rotX = Math.sin(tick * 0.003) * 0.42;
 
-    if (!sleeping) {
-      particles.forEach((particle, index) => {
-        particle.theta += particle.speed * (1 + boost * 5 + (thinking ? 2.5 : 0));
-        particle.phi += particle.drift * (1 + boost * 2);
-        particle.wave += 0.018 + boost * 0.08;
+    particles.forEach((particle, index) => {
+      particle.theta += particle.speed * (1 + boost * 5 + (thinking ? 2.5 : 0));
+      particle.phi += particle.drift * (1 + boost * 2);
+      particle.wave += 0.018 + boost * 0.08;
 
-        const pulse = Math.sin(particle.wave + tick * 0.02) * (speaking ? 0.04 : 0.012);
-        const r = sphereRadius * Math.min(1, Math.max(0.78, particle.radius + pulse));
-        let x3 = Math.sin(particle.phi) * Math.cos(particle.theta) * r;
-        let y3 = Math.cos(particle.phi) * r;
-        let z3 = Math.sin(particle.phi) * Math.sin(particle.theta) * r;
+      const pulse = Math.sin(particle.wave + tick * 0.02) * (speaking ? 0.04 : 0.012);
+      const r = sphereRadius * Math.min(1, Math.max(0.78, particle.radius + pulse));
+      let x3 = Math.sin(particle.phi) * Math.cos(particle.theta) * r;
+      let y3 = Math.cos(particle.phi) * r;
+      let z3 = Math.sin(particle.phi) * Math.sin(particle.theta) * r;
 
-        const cosY = Math.cos(rotY);
-        const sinY = Math.sin(rotY);
-        const rotatedX = x3 * cosY - z3 * sinY;
-        z3 = x3 * sinY + z3 * cosY;
-        x3 = rotatedX;
+      const cosY = Math.cos(rotY);
+      const sinY = Math.sin(rotY);
+      const rotatedX = x3 * cosY - z3 * sinY;
+      z3 = x3 * sinY + z3 * cosY;
+      x3 = rotatedX;
 
-        const cosX = Math.cos(rotX);
-        const sinX = Math.sin(rotX);
-        const rotatedY = y3 * cosX - z3 * sinX;
-        z3 = y3 * sinX + z3 * cosX;
-        y3 = rotatedY;
+      const cosX = Math.cos(rotX);
+      const sinX = Math.sin(rotX);
+      const rotatedY = y3 * cosX - z3 * sinX;
+      z3 = y3 * sinX + z3 * cosX;
+      y3 = rotatedY;
 
-        const depth = (z3 / sphereRadius + 1) / 2;
-        const perspective = 0.78 + depth * 0.36;
-        const x = cx + x3 * perspective;
-        const y = cy + y3 * perspective;
-        points.push({ x, y, z: z3, index, depth });
+      const depth = (z3 / sphereRadius + 1) / 2;
+      const perspective = 0.78 + depth * 0.36;
+      const x = cx + x3 * perspective;
+      const y = cy + y3 * perspective;
+      points.push({ x, y, z: z3, index, depth });
 
-        ctx.beginPath();
-        ctx.fillStyle = speaking
+      ctx.beginPath();
+      ctx.fillStyle = sleeping
+        ? `rgba(100, 116, 139, ${0.1 + depth * 0.22})`
+        : speaking
           ? `rgba(${particle.hue > 0.72 ? "52, 211, 153" : "103, 232, 249"}, ${0.36 + depth * 0.6})`
           : `rgba(${particle.hue > 0.84 ? "167, 139, 250" : "103, 232, 249"}, ${0.26 + depth * 0.58})`;
-        ctx.shadowColor = speaking ? "#67e8f9" : particle.hue > 0.84 ? "#a78bfa" : "#67e8f9";
-        ctx.shadowBlur = (speaking ? 13 : 7) * devicePixelRatio * perspective;
-        ctx.arc(x, y, particle.size * devicePixelRatio * perspective * (1 + boost * 0.32), 0, Math.PI * 2);
-        ctx.fill();
+      ctx.shadowColor = sleeping ? "#334155" : speaking ? "#67e8f9" : particle.hue > 0.84 ? "#a78bfa" : "#67e8f9";
+      ctx.shadowBlur = (sleeping ? 2 : speaking ? 13 : 7) * devicePixelRatio * perspective;
+      ctx.arc(x, y, particle.size * devicePixelRatio * perspective * (sleeping ? 0.72 : 1 + boost * 0.32), 0, Math.PI * 2);
+      ctx.fill();
 
-      });
+    });
 
-      ctx.shadowBlur = 0;
-      ctx.lineWidth = 0.8 * devicePixelRatio;
-      for (let i = 0; i < points.length; i += 13) {
-        const a = points[i];
-        const b = points[(i + 21) % points.length];
-        const distance = Math.hypot(a.x - b.x, a.y - b.y);
-        if (distance < 115 * devicePixelRatio && Math.abs(a.z - b.z) < sphereRadius * 0.36 && a.depth > 0.28 && b.depth > 0.28) {
-          ctx.strokeStyle = active ? "rgba(103, 232, 249, 0.13)" : "rgba(103, 232, 249, 0.055)";
-          ctx.beginPath();
-          ctx.moveTo(a.x, a.y);
-          ctx.lineTo(b.x, b.y);
-          ctx.stroke();
-        }
+    ctx.shadowBlur = 0;
+    ctx.lineWidth = 0.8 * devicePixelRatio;
+    for (let i = 0; i < points.length; i += 13) {
+      const a = points[i];
+      const b = points[(i + 21) % points.length];
+      const distance = Math.hypot(a.x - b.x, a.y - b.y);
+      if (distance < 115 * devicePixelRatio && Math.abs(a.z - b.z) < sphereRadius * 0.36 && a.depth > 0.28 && b.depth > 0.28) {
+        ctx.strokeStyle = sleeping ? "rgba(71, 85, 105, 0.035)" : active ? "rgba(103, 232, 249, 0.13)" : "rgba(103, 232, 249, 0.055)";
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
       }
     }
 
     ctx.save();
     ctx.translate(cx, cy);
-    ctx.strokeStyle = sleeping ? "rgba(103, 232, 249, 0.12)" : speaking ? "rgba(103, 232, 249, 0.24)" : "rgba(103, 232, 249, 0.15)";
+    ctx.strokeStyle = sleeping ? "rgba(71, 85, 105, 0.12)" : speaking ? "rgba(103, 232, 249, 0.24)" : "rgba(103, 232, 249, 0.15)";
     ctx.lineWidth = 1 * devicePixelRatio;
     ctx.setLineDash([4 * devicePixelRatio, 14 * devicePixelRatio]);
     for (let i = -3; i <= 3; i += 1) {
@@ -556,9 +525,9 @@ function initParticles() {
     ctx.save();
     ctx.translate(cx, cy);
     const coreGradient = ctx.createRadialGradient(0, 0, 5, 0, 0, 82 * devicePixelRatio);
-    coreGradient.addColorStop(0, "#ffffff");
-    coreGradient.addColorStop(0.28, sleeping ? "#67e8f9" : "#67e8f9");
-    coreGradient.addColorStop(0.58, sleeping ? "rgba(34, 211, 238, 0.5)" : speaking ? "rgba(52, 211, 153, 0.58)" : "rgba(34, 211, 238, 0.46)");
+    coreGradient.addColorStop(0, sleeping ? "#94a3b8" : "#ffffff");
+    coreGradient.addColorStop(0.28, sleeping ? "#475569" : "#67e8f9");
+    coreGradient.addColorStop(0.58, sleeping ? "rgba(30, 41, 59, 0.38)" : speaking ? "rgba(52, 211, 153, 0.58)" : "rgba(34, 211, 238, 0.46)");
     coreGradient.addColorStop(1, "rgba(8, 145, 178, 0)");
     ctx.fillStyle = coreGradient;
     ctx.beginPath();

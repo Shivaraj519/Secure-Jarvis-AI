@@ -41,11 +41,7 @@ const weatherCodes = {
   63: "Rain",
   65: "Heavy rain",
   80: "Rain showers",
-  81: "Rain showers",
-  82: "Heavy showers",
   95: "Thunderstorm",
-  96: "Thunderstorm",
-  99: "Thunderstorm",
 };
 
 const el = {
@@ -372,13 +368,13 @@ function initChat() {
 async function loadWeather(lat = 12.9716, lon = 77.5946, label = "Bengaluru") {
   try {
     el.weatherLocation.textContent = label;
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m&timezone=Asia%2FKolkata`;
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m`;
     const response = await fetch(url);
     const data = await response.json();
     const current = data.current;
 
     el.weatherTemp.textContent = `${Math.round(current.temperature_2m)} deg C`;
-    el.weatherDetails.textContent = `${weatherCodes[current.weather_code] || "Live weather"} | Feels ${Math.round(current.apparent_temperature)} deg C | Humidity ${current.relative_humidity_2m}% | Wind ${Math.round(current.wind_speed_10m)} km/h`;
+    el.weatherDetails.textContent = `${weatherCodes[current.weather_code] || "Live weather"} | Humidity ${current.relative_humidity_2m}% | Wind ${Math.round(current.wind_speed_10m)} km/h`;
   } catch (error) {
     el.weatherTemp.textContent = "Unavailable";
     el.weatherDetails.textContent = "Weather needs internet access.";
@@ -386,7 +382,16 @@ async function loadWeather(lat = 12.9716, lon = 77.5946, label = "Bengaluru") {
 }
 
 function initWeather() {
-  loadWeather(12.9716, 77.5946, "Bangalore, India");
+  if (!navigator.geolocation) {
+    loadWeather();
+    return;
+  }
+
+  navigator.geolocation.getCurrentPosition(
+    (position) => loadWeather(position.coords.latitude, position.coords.longitude, "Your location"),
+    () => loadWeather(),
+    { timeout: 5000, maximumAge: 900000 }
+  );
 }
 
 function initVoiceBars() {
