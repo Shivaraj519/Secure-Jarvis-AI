@@ -73,9 +73,38 @@ const el = {
   clapButton: document.getElementById("clapButton"),
   clapHint: document.getElementById("clapHint"),
   canvas: document.getElementById("particleCanvas"),
+  
+  // Settings view elements
+  settingsView: document.getElementById("settingsView"),
+  settingsProvider: document.getElementById("settingsProvider"),
+  settingsModel: document.getElementById("settingsModel"),
+  settingsDeepseekKey: document.getElementById("settingsDeepseekKey"),
+  settingsGeminiKey: document.getElementById("settingsGeminiKey"),
+  settingsCreatorName: document.getElementById("settingsCreatorName"),
+  settingsAssistantName: document.getElementById("settingsAssistantName"),
+  settingsMaxReply: document.getElementById("settingsMaxReply"),
+  settingsVoice: document.getElementById("settingsVoice"),
+  saveSettingsBtn: document.getElementById("saveSettingsBtn"),
+  newMemoryInput: document.getElementById("newMemoryInput"),
+  addMemoryBtn: document.getElementById("addMemoryBtn"),
+  settingsMemoryList: document.getElementById("settingsMemoryList"),
+  activeModelLabel: document.getElementById("activeModelLabel"),
+  activeProviderLabel: document.getElementById("activeProviderLabel"),
+  activeVoiceLabel: document.getElementById("activeVoiceLabel"),
+  
+  // Telemetry elements
+  cpuVal: document.getElementById("cpuVal"),
+  cpuBar: document.getElementById("cpuBar"),
+  ramVal: document.getElementById("ramVal"),
+  ramBar: document.getElementById("ramBar"),
+  procVal: document.getElementById("procVal"),
+  
+  // Nav time
+  navTime: document.getElementById("navTime"),
+  navDate: document.getElementById("navDate"),
 };
 
-const viewOrder = ["home", "voice", "chat"];
+const viewOrder = ["home", "voice", "chat", "settings"];
 let activeView = "";
 let viewOpenTimer = 0;
 let voiceOpenTimer = 0;
@@ -110,7 +139,14 @@ function dateText(date) {
 }
 
 function updateClock() {
-  return new Date();
+  const d = new Date();
+  if (el.navTime) {
+    el.navTime.textContent = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  }
+  if (el.navDate) {
+    el.navDate.textContent = d.toLocaleDateString([], { weekday: "long", day: "2-digit", month: "short" });
+  }
+  return d;
 }
 
 function runBootSequence() {
@@ -159,9 +195,20 @@ function setView(viewName) {
     view.classList.remove("active", "view-opening", "voice-opening");
   });
   const targetView = document.getElementById(`${viewName}View`);
-  targetView.classList.add("active");
+  if (targetView) {
+    targetView.classList.add("active");
+  }
 
-  if (previousView !== viewName) {
+  // Update navbar tab highlights
+  document.querySelectorAll(".nav-tab").forEach((tab) => {
+    if (tab.dataset.view === viewName) {
+      tab.classList.add("active");
+    } else {
+      tab.classList.remove("active");
+    }
+  });
+
+  if (previousView !== viewName && targetView) {
     targetView.classList.remove("view-opening");
     void targetView.offsetWidth;
     targetView.classList.add("view-opening");
@@ -169,7 +216,7 @@ function setView(viewName) {
     viewOpenTimer = setTimeout(() => targetView.classList.remove("view-opening"), 1850);
   }
 
-  if (viewName === "voice" && previousView !== "voice") {
+  if (viewName === "voice" && previousView !== "voice" && targetView) {
     targetView.classList.remove("voice-opening");
     void targetView.offsetWidth;
     targetView.classList.add("voice-opening");
@@ -197,7 +244,7 @@ function switchViewByClap() {
 function registerClap() {
   const now = performance.now();
 
-  if (now - firstClapAt < 650) {
+  if (now - firstClapAt < 900) {
     firstClapAt = 0;
     switchViewByClap();
     return;
@@ -314,6 +361,10 @@ async function enableClapSwitch() {
   }
 
   try {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      throw new Error("Microphone API is not available in this window.");
+    }
+
     clapStream = await navigator.mediaDevices.getUserMedia({
       audio: {
         echoCancellation: false,
@@ -322,7 +373,8 @@ async function enableClapSwitch() {
       },
     });
 
-    clapAudioContext = new AudioContext();
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    clapAudioContext = new AudioContextClass();
     const source = clapAudioContext.createMediaStreamSource(clapStream);
     const analyser = clapAudioContext.createAnalyser();
     analyser.fftSize = 1024;
@@ -334,7 +386,7 @@ async function enableClapSwitch() {
     clapEnabled = true;
     el.clapButton.textContent = "Disable Clap Switch";
     el.clapButton.classList.add("active");
-    el.clapHint.textContent = "Double clap sharply to switch screens.";
+    el.clapHint.textContent = "Mic active. Double clap sharply to switch screens.";
 
     function detect() {
       if (!clapEnabled) return;
@@ -352,7 +404,7 @@ async function enableClapSwitch() {
       const average = sum / data.length;
       recentEnergy = recentEnergy * 0.82 + average * 0.18;
       const now = performance.now();
-      const isClap = peak > 62 && average > Math.max(11, recentEnergy * 2.15) && now - lastClapAt > 180;
+      const isClap = peak > 42 && average > Math.max(7, recentEnergy * 1.75) && now - lastClapAt > 160;
 
       if (isClap) {
         lastClapAt = now;
@@ -371,7 +423,7 @@ async function enableClapSwitch() {
     state.audioLevel = 0;
     el.clapButton.textContent = "Enable Clap Switch";
     el.clapButton.classList.remove("active");
-    el.clapHint.textContent = "Microphone permission is needed for clap switching.";
+    el.clapHint.textContent = `Clap switch could not use the microphone: ${error?.message || error?.name || "permission blocked"}.`;
     if (clapStream) {
       clapStream.getTracks().forEach((track) => track.stop());
       clapStream = null;
@@ -440,9 +492,12 @@ function initVoiceBars() {
   el.voiceBars.innerHTML = heights.map((height, index) => `<span style="--height:${height}px;--delay:${index * 48}ms"></span>`).join("");
 }
 
-function initParticlesLegacy() {
+function initParticles() {
   const canvas = el.canvas;
   const ctx = canvas.getContext("2d");
+  const rand = (min, max) => min + Math.random() * (max - min);
+
+  // 620 particles for the original look
   const particles = Array.from({ length: 620 }, (_, index) => ({
     theta: Math.random() * Math.PI * 2,
     phi: Math.acos(2 * Math.random() - 1),
@@ -452,8 +507,37 @@ function initParticlesLegacy() {
     wave: Math.random() * Math.PI * 2,
     hue: Math.random(),
     drift: (index % 2 === 0 ? 1 : -1) * (0.001 + Math.random() * 0.003),
+    dispX: 0,
+    dispY: 0
   }));
   let tick = 0;
+
+  // Track mouse/touch state for repulsion force
+  const mouse = { x: 0, y: 0, active: false };
+
+  canvas.addEventListener("mousemove", (event) => {
+    const rect = canvas.getBoundingClientRect();
+    mouse.x = (event.clientX - rect.left) * devicePixelRatio;
+    mouse.y = (event.clientY - rect.top) * devicePixelRatio;
+    mouse.active = true;
+  });
+
+  canvas.addEventListener("mouseleave", () => {
+    mouse.active = false;
+  });
+
+  canvas.addEventListener("touchmove", (event) => {
+    if (event.touches.length > 0) {
+      const rect = canvas.getBoundingClientRect();
+      mouse.x = (event.touches[0].clientX - rect.left) * devicePixelRatio;
+      mouse.y = (event.touches[0].clientY - rect.top) * devicePixelRatio;
+      mouse.active = true;
+    }
+  });
+
+  canvas.addEventListener("touchend", () => {
+    mouse.active = false;
+  });
 
   function resize() {
     const rect = canvas.getBoundingClientRect();
@@ -473,29 +557,6 @@ function initParticlesLegacy() {
     ctx.restore();
   }
 
-  function drawEnergySpikes(cx, cy, baseRadius, boost, speaking) {
-    const spikes = 96;
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.rotate(tick * 0.004);
-    ctx.strokeStyle = speaking ? "rgba(134, 239, 172, 0.72)" : "rgba(103, 232, 249, 0.48)";
-    ctx.lineWidth = 1.2 * devicePixelRatio;
-
-    for (let i = 0; i < spikes; i += 1) {
-      const angle = (Math.PI * 2 * i) / spikes;
-      const voiceWave = Math.sin(tick * 0.05 + i * 0.7) * (speaking ? 30 : 9);
-      const inner = (baseRadius + 12) * devicePixelRatio;
-      const outer = (baseRadius + 32 + voiceWave + boost * 24) * devicePixelRatio;
-
-      ctx.beginPath();
-      ctx.moveTo(Math.cos(angle) * inner, Math.sin(angle) * inner);
-      ctx.lineTo(Math.cos(angle) * outer, Math.sin(angle) * outer);
-      ctx.stroke();
-    }
-
-    ctx.restore();
-  }
-
   function draw() {
     tick += 1;
     const w = canvas.width;
@@ -503,8 +564,8 @@ function initParticlesLegacy() {
     const cx = w / 2;
     const cy = h / 2;
     const boost = Math.max(state.particleBoost, state.audioLevel * 0.75);
-    const speaking = state.status === "speaking";
-    const thinking = state.status === "processing";
+    const speaking = state.status === "speaking" || state.status === "heard";
+    const thinking = state.status === "processing" || state.status === "executing";
     const active = boost > 0;
     const sleeping = isSleepMode();
     const base = Math.min(w, h) / devicePixelRatio;
@@ -515,295 +576,29 @@ function initParticlesLegacy() {
     ctx.fillRect(0, 0, w, h);
 
     const halo = ctx.createRadialGradient(cx, cy, 10, cx, cy, Math.min(w, h) * 0.48);
-    halo.addColorStop(0, sleeping ? "rgba(103, 232, 249, 0.24)" : speaking ? "rgba(134, 239, 172, 0.3)" : "rgba(103, 232, 249, 0.28)");
-    halo.addColorStop(0.32, sleeping ? "rgba(34, 211, 238, 0.08)" : thinking ? "rgba(250, 204, 21, 0.12)" : "rgba(34, 211, 238, 0.08)");
+    halo.addColorStop(0, sleeping ? "rgba(71, 85, 105, 0.1)" : speaking ? "rgba(134, 239, 172, 0.3)" : "rgba(103, 232, 249, 0.28)");
+    halo.addColorStop(0.32, sleeping ? "rgba(15, 23, 42, 0.05)" : thinking ? "rgba(250, 204, 21, 0.12)" : "rgba(34, 211, 238, 0.08)");
     halo.addColorStop(1, "rgba(2, 6, 23, 0)");
     ctx.fillStyle = halo;
     ctx.fillRect(0, 0, w, h);
 
-    drawRing(cx, cy, ringBase * 1.12, sleeping ? "rgba(103, 232, 249, 0.22)" : "rgba(103, 232, 249, 0.32)", 1.2, [8, 22]);
-    drawRing(cx, cy, ringBase * 1.38, sleeping ? "rgba(45, 212, 191, 0.14)" : "rgba(45, 212, 191, 0.22)", 1, [16, 28]);
-    drawRing(cx, cy, ringBase * 1.72, sleeping ? "rgba(103, 232, 249, 0.1)" : "rgba(103, 232, 249, 0.12)", 1, [3, 18]);
+    // Draw the 3 clean concentric rings
+    drawRing(cx, cy, ringBase * 1.12, sleeping ? "rgba(71, 85, 105, 0.16)" : "rgba(103, 232, 249, 0.32)", 1.2, [8, 22]);
+    drawRing(cx, cy, ringBase * 1.38, sleeping ? "rgba(51, 65, 85, 0.14)" : "rgba(45, 212, 191, 0.22)", 1, [16, 28]);
+    drawRing(cx, cy, ringBase * 1.72, sleeping ? "rgba(51, 65, 85, 0.08)" : "rgba(103, 232, 249, 0.12)", 1, [3, 18]);
+
     const points = [];
     const sphereRadius = ringBase * (1.18 + boost * 0.14) * devicePixelRatio;
     const rotY = tick * 0.006 * (1 + boost * 1.8);
     const rotX = Math.sin(tick * 0.003) * 0.42;
 
-    if (!sleeping) {
-      particles.forEach((particle, index) => {
-        particle.theta += particle.speed * (1 + boost * 5 + (thinking ? 2.5 : 0));
-        particle.phi += particle.drift * (1 + boost * 2);
-        particle.wave += 0.018 + boost * 0.08;
-
-        const pulse = Math.sin(particle.wave + tick * 0.02) * (speaking ? 0.04 : 0.012);
-        const r = sphereRadius * Math.min(1, Math.max(0.78, particle.radius + pulse));
-        let x3 = Math.sin(particle.phi) * Math.cos(particle.theta) * r;
-        let y3 = Math.cos(particle.phi) * r;
-        let z3 = Math.sin(particle.phi) * Math.sin(particle.theta) * r;
-
-        const cosY = Math.cos(rotY);
-        const sinY = Math.sin(rotY);
-        const rotatedX = x3 * cosY - z3 * sinY;
-        z3 = x3 * sinY + z3 * cosY;
-        x3 = rotatedX;
-
-        const cosX = Math.cos(rotX);
-        const sinX = Math.sin(rotX);
-        const rotatedY = y3 * cosX - z3 * sinX;
-        z3 = y3 * sinX + z3 * cosX;
-        y3 = rotatedY;
-
-        const depth = (z3 / sphereRadius + 1) / 2;
-        const perspective = 0.78 + depth * 0.36;
-        const x = cx + x3 * perspective;
-        const y = cy + y3 * perspective;
-        points.push({ x, y, z: z3, index, depth });
-
-        ctx.beginPath();
-        ctx.fillStyle = speaking
-          ? `rgba(${particle.hue > 0.72 ? "52, 211, 153" : "103, 232, 249"}, ${0.36 + depth * 0.6})`
-          : `rgba(${particle.hue > 0.84 ? "167, 139, 250" : "103, 232, 249"}, ${0.26 + depth * 0.58})`;
-        ctx.shadowColor = speaking ? "#67e8f9" : particle.hue > 0.84 ? "#a78bfa" : "#67e8f9";
-        ctx.shadowBlur = (speaking ? 13 : 7) * devicePixelRatio * perspective;
-        ctx.arc(x, y, particle.size * devicePixelRatio * perspective * (1 + boost * 0.32), 0, Math.PI * 2);
-        ctx.fill();
-
-      });
-
-      ctx.shadowBlur = 0;
-      ctx.lineWidth = 0.8 * devicePixelRatio;
-      for (let i = 0; i < points.length; i += 13) {
-        const a = points[i];
-        const b = points[(i + 21) % points.length];
-        const distance = Math.hypot(a.x - b.x, a.y - b.y);
-        if (distance < 115 * devicePixelRatio && Math.abs(a.z - b.z) < sphereRadius * 0.36 && a.depth > 0.28 && b.depth > 0.28) {
-          ctx.strokeStyle = active ? "rgba(103, 232, 249, 0.13)" : "rgba(103, 232, 249, 0.055)";
-          ctx.beginPath();
-          ctx.moveTo(a.x, a.y);
-          ctx.lineTo(b.x, b.y);
-          ctx.stroke();
-        }
-      }
-    }
-
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.strokeStyle = sleeping ? "rgba(103, 232, 249, 0.12)" : speaking ? "rgba(103, 232, 249, 0.24)" : "rgba(103, 232, 249, 0.15)";
-    ctx.lineWidth = 1 * devicePixelRatio;
-    ctx.setLineDash([4 * devicePixelRatio, 14 * devicePixelRatio]);
-    for (let i = -3; i <= 3; i += 1) {
-      ctx.beginPath();
-      ctx.ellipse(0, 0, sphereRadius, sphereRadius * (0.12 + Math.abs(i) * 0.12), i * 0.16 + tick * 0.0015, 0, Math.PI * 2);
-      ctx.stroke();
-    }
-    ctx.setLineDash([]);
-    ctx.restore();
-
-    ctx.save();
-    ctx.translate(cx, cy);
-    const coreGradient = ctx.createRadialGradient(0, 0, 5, 0, 0, 82 * devicePixelRatio);
-    coreGradient.addColorStop(0, "#ffffff");
-    coreGradient.addColorStop(0.28, sleeping ? "#67e8f9" : "#67e8f9");
-    coreGradient.addColorStop(0.58, sleeping ? "rgba(34, 211, 238, 0.5)" : speaking ? "rgba(52, 211, 153, 0.58)" : "rgba(34, 211, 238, 0.46)");
-    coreGradient.addColorStop(1, "rgba(8, 145, 178, 0)");
-    ctx.fillStyle = coreGradient;
-    ctx.beginPath();
-    ctx.arc(0, 0, (68 + boost * 18 + Math.sin(tick * 0.06) * 5) * devicePixelRatio, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-
-    requestAnimationFrame(draw);
-  }
-
-  resize();
-  addEventListener("resize", resize);
-  draw();
-}
-
-function initParticles() {
-  const canvas = el.canvas;
-  const ctx = canvas.getContext("2d");
-  const rand = (min, max) => min + Math.random() * (max - min);
-  const TWO_PI = Math.PI * 2;
-
-  const particles = Array.from({ length: 980 }, (_, index) => ({
-    theta: Math.random() * TWO_PI,
-    phi: Math.acos(2 * Math.random() - 1),
-    radius: rand(0.68, 1.04),
-    size: rand(0.45, 2.25),
-    speed: rand(0.0012, 0.0048) * (index % 2 ? 1 : -1),
-    drift: rand(0.0006, 0.0026) * (index % 3 ? 1 : -1),
-    pulse: Math.random() * TWO_PI,
-    tint: Math.random(),
-  }));
-
-  const dust = Array.from({ length: 160 }, () => ({
-    x: Math.random(),
-    y: Math.random(),
-    speed: rand(0.08, 0.42),
-    size: rand(0.4, 1.8),
-    alpha: rand(0.12, 0.52),
-  }));
-
-  let tick = 0;
-
-  function resize() {
-    const rect = canvas.getBoundingClientRect();
-    const nextWidth = Math.max(1, Math.floor(rect.width * devicePixelRatio));
-    const nextHeight = Math.max(1, Math.floor(rect.height * devicePixelRatio));
-    if (canvas.width !== nextWidth || canvas.height !== nextHeight) {
-      canvas.width = nextWidth;
-      canvas.height = nextHeight;
-    }
-  }
-
-  function statusTone() {
-    if (state.status === "error") {
-      return {
-        core: "rgba(251, 113, 133, ",
-        glow: "rgba(244, 63, 94, ",
-        accent: "rgba(251, 191, 36, ",
-        rgb: "251, 113, 133",
-      };
-    }
-
-    if (state.status === "speaking" || state.status === "heard") {
-      return {
-        core: "rgba(52, 211, 153, ",
-        glow: "rgba(34, 197, 94, ",
-        accent: "rgba(187, 247, 208, ",
-        rgb: "52, 211, 153",
-      };
-    }
-
-    if (state.status === "processing" || state.status === "executing") {
-      return {
-        core: "rgba(103, 232, 249, ",
-        glow: "rgba(14, 165, 233, ",
-        accent: "rgba(226, 244, 255, ",
-        rgb: "103, 232, 249",
-      };
-    }
-
-    return {
-      core: "rgba(103, 232, 249, ",
-      glow: "rgba(34, 211, 238, ",
-      accent: "rgba(226, 244, 255, ",
-      rgb: "103, 232, 249",
-    };
-  }
-
-  function drawRadialBackground(cx, cy, width, height, boost, tone) {
-    const far = Math.max(width, height);
-    const halo = ctx.createRadialGradient(cx, cy, 6, cx, cy, far * 0.52);
-    halo.addColorStop(0, tone.core + `${0.07 + boost * 0.06})`);
-    halo.addColorStop(0.24, tone.glow + `${0.055 + boost * 0.07})`);
-    halo.addColorStop(0.52, tone.accent + `${0.018 + boost * 0.03})`);
-    halo.addColorStop(1, "rgba(1, 6, 13, 0)");
-
-    ctx.fillStyle = "rgba(1, 6, 13, 0.74)";
-    ctx.fillRect(0, 0, width, height);
-    ctx.fillStyle = halo;
-    ctx.fillRect(0, 0, width, height);
-
-  }
-
-  function drawDust(width, height, boost, tone) {
-    ctx.save();
-    dust.forEach((speck) => {
-      speck.y += (speck.speed + boost * 0.55) / height;
-      speck.x += Math.sin(tick * 0.004 + speck.y * 12) * 0.00016;
-      if (speck.y > 1.05) {
-        speck.y = -0.05;
-        speck.x = Math.random();
-      }
-
-      ctx.fillStyle = tone.glow + `${speck.alpha})`;
-      ctx.fillRect(
-        speck.x * width,
-        speck.y * height,
-        speck.size * devicePixelRatio,
-        speck.size * devicePixelRatio
-      );
-    });
-    ctx.restore();
-  }
-
-  function drawOrbit(cx, cy, radius, ratio, rotation, color, width, dash = []) {
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.rotate(rotation);
-    ctx.strokeStyle = color;
-    ctx.lineWidth = width * devicePixelRatio;
-    ctx.setLineDash(dash.map((value) => value * devicePixelRatio));
-    ctx.beginPath();
-    ctx.ellipse(0, 0, radius * devicePixelRatio, radius * ratio * devicePixelRatio, 0, 0, TWO_PI);
-    ctx.stroke();
-    ctx.restore();
-  }
-
-  function drawHudRings(cx, cy, coreRadius, boost, tone) {
-    drawOrbit(cx, cy, coreRadius * 1.28, 1, tick * 0.0032, tone.glow + `${0.34 + boost * 0.24})`, 1.3, [10, 24]);
-    drawOrbit(cx, cy, coreRadius * 1.56, 0.58, -0.34 + tick * 0.002, tone.accent + `${0.24 + boost * 0.18})`, 1.1, [24, 34]);
-    drawOrbit(cx, cy, coreRadius * 1.85, 0.28, 0.62 - tick * 0.0015, tone.core + `${0.18 + boost * 0.12})`, 0.9, [4, 18]);
-    drawOrbit(cx, cy, coreRadius * 2.12, 1, -tick * 0.0012, "rgba(255, 255, 255, 0.08)", 1, [2, 18]);
-
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.rotate(tick * 0.006);
-    for (let index = 0; index < 10; index += 1) {
-      const angle = (TWO_PI * index) / 10;
-      const inner = coreRadius * (1.93 + Math.sin(tick * 0.018 + index) * 0.035) * devicePixelRatio;
-      const outer = inner + (20 + boost * 30) * devicePixelRatio;
-      ctx.strokeStyle = index % 2 ? tone.accent + "0.36)" : tone.glow + "0.42)";
-      ctx.lineWidth = 1.4 * devicePixelRatio;
-      ctx.beginPath();
-      ctx.moveTo(Math.cos(angle) * inner, Math.sin(angle) * inner);
-      ctx.lineTo(Math.cos(angle) * outer, Math.sin(angle) * outer);
-      ctx.stroke();
-    }
-    ctx.restore();
-  }
-
-  function drawVoiceSpikes(cx, cy, radius, boost, tone) {
-    const spikes = 144;
-    const loud = state.status === "speaking" || state.status === "heard";
-
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.rotate(-tick * 0.0048);
-    ctx.lineCap = "round";
-
-    for (let index = 0; index < spikes; index += 1) {
-      const angle = (TWO_PI * index) / spikes;
-      const noise = Math.sin(tick * 0.06 + index * 0.31) * Math.cos(tick * 0.018 + index * 0.19);
-      const voice = loud ? Math.abs(Math.sin(tick * 0.09 + index * 0.42)) : 0.24;
-      const inner = (radius * 1.08 + noise * 4) * devicePixelRatio;
-      const outer = (radius * (1.18 + boost * 0.16) + voice * (26 + boost * 48)) * devicePixelRatio;
-
-      ctx.strokeStyle = index % 5 === 0 ? tone.accent + "0.78)" : tone.glow + `${0.22 + voice * 0.38})`;
-      ctx.lineWidth = (index % 5 === 0 ? 1.4 : 0.75) * devicePixelRatio;
-      ctx.beginPath();
-      ctx.moveTo(Math.cos(angle) * inner, Math.sin(angle) * inner);
-      ctx.lineTo(Math.cos(angle) * outer, Math.sin(angle) * outer);
-      ctx.stroke();
-    }
-
-    ctx.restore();
-  }
-
-  function drawSphere(cx, cy, radius, boost, tone, sleeping, speaking, thinking) {
-    const sphereRadius = radius * (0.96 + boost * 0.08) * devicePixelRatio;
-    const rotY = tick * 0.0065 * (1 + boost * 1.8);
-    const rotX = Math.sin(tick * 0.0032) * 0.46;
-
     particles.forEach((particle, index) => {
-      particle.theta += particle.speed * (1 + boost * 4 + (thinking ? 2 : 0));
-      particle.phi += particle.drift * (1 + boost * 1.6);
-      particle.pulse += 0.014 + boost * 0.06;
+      particle.theta += particle.speed * (1 + boost * 5 + (thinking ? 2.5 : 0));
+      particle.phi += particle.drift * (1 + boost * 2);
+      particle.wave += 0.018 + boost * 0.08;
 
-      const pulse = Math.sin(particle.pulse + tick * 0.017) * (speaking ? 0.055 : 0.018);
-      const r = sphereRadius * Math.min(1.08, Math.max(0.68, particle.radius + pulse));
+      const pulse = Math.sin(particle.wave + tick * 0.02) * (speaking ? 0.04 : 0.012);
+      const r = sphereRadius * Math.min(1, Math.max(0.78, particle.radius + pulse));
       let x3 = Math.sin(particle.phi) * Math.cos(particle.theta) * r;
       let y3 = Math.cos(particle.phi) * r;
       let z3 = Math.sin(particle.phi) * Math.sin(particle.theta) * r;
@@ -821,87 +616,75 @@ function initParticles() {
       y3 = rotatedY;
 
       const depth = (z3 / sphereRadius + 1) / 2;
-      const perspective = 0.72 + depth * 0.46;
-      const x = cx + x3 * perspective;
-      const y = cy + y3 * perspective;
-      const alpha = sleeping ? 0.12 + depth * 0.28 : 0.2 + depth * 0.74;
-      const particleColor = particle.tint > 0.82 ? tone.accent : particle.tint > 0.62 ? tone.core : tone.glow;
+      const perspective = 0.78 + depth * 0.36;
+      
+      const baseX = cx + x3 * perspective;
+      const baseY = cy + y3 * perspective;
+
+      // Apply interactive touch/hover repulsion
+      particle.dispX = (particle.dispX || 0) * 0.88;
+      particle.dispY = (particle.dispY || 0) * 0.88;
+
+      if (mouse.active) {
+        const dx = baseX - mouse.x;
+        const dy = baseY - mouse.y;
+        const dist = Math.hypot(dx, dy);
+        const maxDist = 120 * devicePixelRatio;
+
+        if (dist < maxDist) {
+          const force = (1 - dist / maxDist) * 16 * (1 + boost * 0.5) * devicePixelRatio;
+          const angle = Math.atan2(dy, dx);
+          particle.dispX += Math.cos(angle) * force;
+          particle.dispY += Math.sin(angle) * force;
+        }
+      }
+
+      const x = baseX + particle.dispX;
+      const y = baseY + particle.dispY;
+      points.push({ x, y, z: z3, index, depth });
+
       ctx.beginPath();
-      ctx.fillStyle = particleColor + `${alpha})`;
-      ctx.shadowColor = `rgb(${tone.rgb})`;
-      ctx.shadowBlur = (sleeping ? 2 : 8 + boost * 12) * devicePixelRatio * perspective;
-      ctx.arc(x, y, particle.size * devicePixelRatio * perspective * (1 + boost * 0.32), 0, TWO_PI);
+      ctx.fillStyle = sleeping
+        ? `rgba(100, 116, 139, ${0.1 + depth * 0.22})`
+        : speaking
+          ? `rgba(${particle.hue > 0.72 ? "52, 211, 153" : "103, 232, 249"}, ${0.36 + depth * 0.6})`
+          : `rgba(${particle.hue > 0.84 ? "167, 139, 250" : "103, 232, 249"}, ${0.26 + depth * 0.58})`;
+      ctx.shadowColor = sleeping ? "#334155" : speaking ? "#34d399" : particle.hue > 0.84 ? "#a78bfa" : "#67e8f9";
+      ctx.shadowBlur = (sleeping ? 2 : speaking ? 13 : 7) * devicePixelRatio * perspective;
+      ctx.arc(x, y, particle.size * devicePixelRatio * perspective * (sleeping ? 0.72 : 1 + boost * 0.32), 0, Math.PI * 2);
       ctx.fill();
     });
+
     ctx.shadowBlur = 0;
-  }
+    ctx.lineWidth = 0.8 * devicePixelRatio;
+    
+    // Connect particles dynamically
+    for (let i = 0; i < points.length; i += 13) {
+      const a = points[i];
+      const b = points[(i + 21) % points.length];
+      const distance = Math.hypot(a.x - b.x, a.y - b.y);
+      if (distance < 115 * devicePixelRatio && Math.abs(a.z - b.z) < sphereRadius * 0.36 && a.depth > 0.28 && b.depth > 0.28) {
+        ctx.strokeStyle = sleeping ? "rgba(71, 85, 105, 0.035)" : active ? "rgba(103, 232, 249, 0.13)" : "rgba(103, 232, 249, 0.055)";
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+      }
+    }
 
-  function drawCore(cx, cy, radius, boost, tone, speaking) {
-    const pulse = Math.sin(tick * 0.055) * 0.07 + boost * 0.22;
-    const coreRadius = (radius * (0.23 + pulse * 0.06)) * devicePixelRatio;
-    const glowRadius = (radius * (0.55 + pulse * 0.28)) * devicePixelRatio;
-
-    const glow = ctx.createRadialGradient(cx, cy, 2, cx, cy, glowRadius);
-    glow.addColorStop(0, "rgba(255, 255, 255, 0.95)");
-    glow.addColorStop(0.18, tone.core + "0.78)");
-    glow.addColorStop(0.48, speaking ? "rgba(52, 211, 153, 0.36)" : tone.glow + "0.32)");
-    glow.addColorStop(1, "rgba(1, 6, 13, 0)");
-    ctx.fillStyle = glow;
-    ctx.beginPath();
-    ctx.arc(cx, cy, glowRadius, 0, TWO_PI);
-    ctx.fill();
-
+    // Rotating orbital lines (dotted ellipses)
     ctx.save();
     ctx.translate(cx, cy);
-    ctx.rotate(tick * 0.012);
-    const blade = ctx.createLinearGradient(-coreRadius, 0, coreRadius, 0);
-    blade.addColorStop(0, "rgba(255,255,255,0)");
-    blade.addColorStop(0.5, "rgba(255,255,255,0.9)");
-    blade.addColorStop(1, "rgba(255,255,255,0)");
-    ctx.fillStyle = blade;
-    ctx.fillRect(-coreRadius * 1.2, -2 * devicePixelRatio, coreRadius * 2.4, 4 * devicePixelRatio);
-    ctx.rotate(Math.PI / 2);
-    ctx.fillRect(-coreRadius * 1.2, -2 * devicePixelRatio, coreRadius * 2.4, 4 * devicePixelRatio);
-    ctx.restore();
-  }
-
-  function drawLens(cx, cy, width, height, boost, tone) {
-    const bandY = cy + Math.sin(tick * 0.018) * height * 0.14;
-    const beam = ctx.createLinearGradient(0, bandY - 46 * devicePixelRatio, 0, bandY + 46 * devicePixelRatio);
-    beam.addColorStop(0, "rgba(255,255,255,0)");
-    beam.addColorStop(0.5, tone.glow + `${0.055 + boost * 0.06})`);
-    beam.addColorStop(1, "rgba(255,255,255,0)");
-    ctx.fillStyle = beam;
-    ctx.fillRect(0, bandY - 46 * devicePixelRatio, width, 92 * devicePixelRatio);
-
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.055)";
+    ctx.strokeStyle = sleeping ? "rgba(71, 85, 105, 0.12)" : speaking ? "rgba(103, 232, 249, 0.24)" : "rgba(103, 232, 249, 0.15)";
     ctx.lineWidth = 1 * devicePixelRatio;
-    for (let y = 0; y < height; y += 9 * devicePixelRatio) {
+    ctx.setLineDash([4 * devicePixelRatio, 14 * devicePixelRatio]);
+    for (let i = -3; i <= 3; i += 1) {
       ctx.beginPath();
-      ctx.moveTo(0, y + 0.5);
-      ctx.lineTo(width, y + 0.5);
+      ctx.ellipse(0, 0, sphereRadius, sphereRadius * (0.12 + Math.abs(i) * 0.12), i * 0.16 + tick * 0.0015, 0, Math.PI * 2);
       ctx.stroke();
     }
-  }
-
-  function draw() {
-    tick += 1;
-    resize();
-    const width = canvas.width;
-    const height = canvas.height;
-    const cx = width / 2;
-    const cy = height * 0.43;
-    const boost = Math.max(state.particleBoost, state.audioLevel * 0.85);
-    const sleeping = isSleepMode();
-    const speaking = state.status === "speaking" || state.status === "heard";
-    const thinking = state.status === "processing" || state.status === "executing";
-    const tone = statusTone();
-    const base = Math.min(width, height) / devicePixelRatio;
-    const coreRadius = Math.min(230, base * 0.31);
-
-    ctx.clearRect(0, 0, width, height);
-    drawRadialBackground(cx, cy, width, height, boost, tone);
-    drawSphere(cx, cy, coreRadius, boost, tone, sleeping, speaking, thinking);
+    ctx.setLineDash([]);
+    ctx.restore();
 
     requestAnimationFrame(draw);
   }
@@ -927,6 +710,221 @@ socket.on("jarvis_status", (data) => {
   setStatus(data?.status, data?.message);
 });
 
+// ==========================================
+// JARVIS UPGRADES: SETTINGS, MEMORY, TELEMETRY, APPS
+// ==========================================
+
+let currentSettings = {};
+
+async function fetchSettings() {
+  try {
+    const response = await fetch(`${API_BASE}/api/settings`);
+    if (!response.ok) throw new Error("Failed to load settings");
+    const data = await response.json();
+    currentSettings = data;
+    
+    // Populate form fields
+    if (el.settingsProvider) el.settingsProvider.value = data.api_provider || "deepseek";
+    if (el.settingsModel) el.settingsModel.value = data.active_model || "";
+    if (el.settingsDeepseekKey) el.settingsDeepseekKey.value = data.deepseek_api_key || "";
+    if (el.settingsGeminiKey) el.settingsGeminiKey.value = data.gemini_api_key || "";
+    if (el.settingsCreatorName) el.settingsCreatorName.value = data.creator_name || "Shivaraj";
+    if (el.settingsAssistantName) el.settingsAssistantName.value = data.assistant_name || "Jarvis";
+    if (el.settingsMaxReply) el.settingsMaxReply.value = data.max_reply_words || 45;
+    if (el.settingsVoice) el.settingsVoice.value = data.active_voice || "en-GB-RyanNeural";
+    
+    // Update labels in sidebar
+    if (el.activeModelLabel) el.activeModelLabel.textContent = data.active_model || (data.api_provider === "gemini" ? "gemini-1.5-flash" : "deepseek-chat");
+    if (el.activeProviderLabel) el.activeProviderLabel.textContent = (data.api_provider || "deepseek").toUpperCase();
+    if (el.activeVoiceLabel) el.activeVoiceLabel.textContent = data.active_voice ? data.active_voice.split("-")[2] : "Ryan";
+  } catch (error) {
+    console.error("Error loading config:", error);
+  }
+}
+
+async function saveSettings() {
+  if (!el.saveSettingsBtn) return;
+  el.saveSettingsBtn.textContent = "Saving...";
+  el.saveSettingsBtn.disabled = true;
+  
+  const payload = {
+    api_provider: el.settingsProvider.value,
+    active_model: el.settingsModel.value,
+    deepseek_api_key: el.settingsDeepseekKey.value,
+    gemini_api_key: el.settingsGeminiKey.value,
+    creator_name: el.settingsCreatorName.value,
+    assistant_name: el.settingsAssistantName.value,
+    max_reply_words: parseInt(el.settingsMaxReply.value) || 45,
+    active_voice: el.settingsVoice.value
+  };
+  
+  try {
+    const response = await fetch(`${API_BASE}/api/settings`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    
+    if (response.ok) {
+      el.saveSettingsBtn.textContent = "Saved Successfully!";
+      addTimeline("active", "System settings successfully updated.");
+      fetchSettings(); // Refresh UI labels
+    } else {
+      el.saveSettingsBtn.textContent = "Save Failed";
+    }
+  } catch (error) {
+    console.error("Save error:", error);
+    el.saveSettingsBtn.textContent = "Save Failed";
+  }
+  
+  setTimeout(() => {
+    el.saveSettingsBtn.textContent = "Save Configuration";
+    el.saveSettingsBtn.disabled = false;
+  }, 2000);
+}
+
+async function loadMemories() {
+  try {
+    const response = await fetch(`${API_BASE}/api/memories`);
+    if (!response.ok) throw new Error("Failed to load memories");
+    const data = await response.json();
+    renderMemories(data.memories || []);
+  } catch (error) {
+    console.error("Error loading memories:", error);
+  }
+}
+
+function renderMemories(memories) {
+  if (!el.settingsMemoryList) return;
+  el.settingsMemoryList.innerHTML = "";
+  
+  if (memories.length === 0) {
+    el.settingsMemoryList.innerHTML = `<p class="memory-desc" style="font-style: italic; opacity: 0.6;">No cortex memories loaded. Add one below.</p>`;
+    return;
+  }
+  
+  memories.forEach((memory) => {
+    const tag = document.createElement("div");
+    tag.className = "memory-tag";
+    tag.innerHTML = `
+      <span>${memory}</span>
+      <button type="button" class="del-memory-btn" data-memory="${encodeURIComponent(memory)}">&times;</button>
+    `;
+    el.settingsMemoryList.appendChild(tag);
+  });
+  
+  // Attach delete click listeners
+  el.settingsMemoryList.querySelectorAll(".del-memory-btn").forEach((btn) => {
+    btn.addEventListener("click", async (e) => {
+      const memToDelete = decodeURIComponent(btn.dataset.memory);
+      await deleteMemory(memToDelete);
+    });
+  });
+}
+
+async function addMemory() {
+  if (!el.newMemoryInput) return;
+  const memoryText = el.newMemoryInput.value.trim();
+  if (!memoryText) return;
+  
+  try {
+    const response = await fetch(`${API_BASE}/api/memories`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ memory: memoryText }),
+    });
+    
+    if (response.ok) {
+      el.newMemoryInput.value = "";
+      addTimeline("active", `Added cortex memory: "${memoryText}"`);
+      const data = await response.json();
+      renderMemories(data.memories || []);
+    }
+  } catch (error) {
+    console.error("Add memory error:", error);
+  }
+}
+
+async function deleteMemory(memoryText) {
+  try {
+    const response = await fetch(`${API_BASE}/api/memories`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ memory: memoryText }),
+    });
+    
+    if (response.ok) {
+      addTimeline("active", `Deleted cortex memory: "${memoryText}"`);
+      const data = await response.json();
+      renderMemories(data.memories || []);
+    }
+  } catch (error) {
+    console.error("Delete memory error:", error);
+  }
+}
+
+function initAppLauncher() {
+  document.querySelectorAll(".launcher-btn").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const appName = btn.dataset.app;
+      btn.disabled = true;
+      try {
+        const response = await fetch(`${API_BASE}/api/launch_app`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ app: appName }),
+        });
+        if (response.ok) {
+          addTimeline("executing", `Successfully launched ${appName}.`);
+        } else {
+          addTimeline("error", `Failed to launch ${appName}.`);
+        }
+      } catch (error) {
+        addTimeline("error", `Launcher service offline.`);
+      }
+      setTimeout(() => btn.disabled = false, 1000);
+    });
+  });
+}
+
+function initTelemetrySocket() {
+  socket.on("system_telemetry", (data) => {
+    if (el.cpuVal) el.cpuVal.textContent = `${Math.round(data.cpu)}%`;
+    if (el.cpuBar) el.cpuBar.style.width = `${Math.round(data.cpu)}%`;
+    if (el.ramVal) el.ramVal.textContent = `${Math.round(data.ram)}%`;
+    if (el.ramBar) el.ramBar.style.width = `${Math.round(data.ram)}%`;
+    if (el.procVal) el.procVal.textContent = data.processes;
+  });
+}
+
+function initToggleKeys() {
+  document.querySelectorAll(".toggle-key-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const targetId = btn.dataset.target;
+      const input = document.getElementById(targetId);
+      if (input) {
+        if (input.type === "password") {
+          input.type = "text";
+          btn.textContent = "🙈";
+        } else {
+          input.type = "password";
+          btn.textContent = "👁️";
+        }
+      }
+    });
+  });
+}
+
+function initNavbarTabs() {
+  document.querySelectorAll(".nav-tab").forEach((tab) => {
+    tab.addEventListener("click", () => {
+      const viewName = tab.dataset.view;
+      window.location.hash = `#${viewName}`;
+      setView(viewName);
+    });
+  });
+}
+
 updateClock();
 runBootSequence();
 initChat();
@@ -936,6 +934,35 @@ initParticles();
 setBackend(socket.connected);
 setStatus("sleeping", "Standing by for your command.");
 pollBackendStatus();
+
+// Upgrades Initializations
+initNavbarTabs();
+
+const voiceToHomeBtn = document.getElementById("voiceToHomeBtn");
+if (voiceToHomeBtn) {
+  voiceToHomeBtn.addEventListener("click", () => {
+    window.location.hash = "#home";
+    setView("home");
+  });
+}
+initAppLauncher();
+initTelemetrySocket();
+initToggleKeys();
+fetchSettings();
+loadMemories();
+
+if (el.saveSettingsBtn) {
+  el.saveSettingsBtn.addEventListener("click", saveSettings);
+}
+if (el.addMemoryBtn) {
+  el.addMemoryBtn.addEventListener("click", addMemory);
+}
+if (el.newMemoryInput) {
+  el.newMemoryInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") addMemory();
+  });
+}
+
 if (!openViewFromHash()) {
   setView("home");
 }

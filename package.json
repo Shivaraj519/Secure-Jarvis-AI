@@ -1,23 +1,25 @@
 {
+  "name": "secure-jarvis-ai-agent",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "electron/main.cjs",
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 3001",
+    "backend": "python backend/main.py",
+    "jarvis": "npm run build && electron .",
+    "app": "npm run jarvis",
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1 --port 3001"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^5.1.1",
-    "vite": "^7.2.7",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
-    "socket.io-client": "^4.8.3"
+    "socket.io-client": "^4.8.3",
+    "vite": "^7.2.7"
   },
-  "devDependencies": {}
+  "devDependencies": {
+    "electron": "^42.2.0"
+  }
 }
-<<<<<<< HEAD
-<<<<<<< HEAD
-"homepage": "https://shivaraj519.github.io/Secure-Jarvis-AI"
-=======
-"homepage": "https://shivaraj519.github.io/Secure-Jarvis-AI"
->>>>>>> e0b27a0 (fixed github pages)
-=======
->>>>>>> 28d8e1d (Updated Jarvis)

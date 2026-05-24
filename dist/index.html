@@ -4,14 +4,15 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Secure Jarvis AI Agent</title>
-    <script type="module" crossorigin src="/assets/index-BoaAESxM.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-DteUGWTI.css">
+    <script type="module" crossorigin src="./assets/index-CiQwVtUU.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-CrqC2gzl.css">
   </head>
   <body>
     <main class="app-shell" data-status="sleeping">
       <div class="grid-layer"></div>
       <div class="light-field light-a"></div>
       <div class="light-field light-b"></div>
+
       <section class="boot-sequence" id="bootSequence">
         <div class="boot-ring"></div>
         <div class="boot-panel">
@@ -20,6 +21,32 @@
           <div class="boot-progress"><i></i></div>
         </div>
       </section>
+
+      <header class="app-header-nav">
+        <div class="brand">
+          <span class="pulse-indicator"></span>
+          <h1>JARVIS</h1>
+          <span class="sub-brand">NEURAL LINK</span>
+        </div>
+        <nav class="nav-tabs">
+          <button class="nav-tab active" data-view="home" type="button">
+            <span class="icon">🎮</span> Console
+          </button>
+          <button class="nav-tab" data-view="voice" type="button">
+            <span class="icon">🌀</span> Core Visualizer
+          </button>
+          <button class="nav-tab" data-view="chat" type="button">
+            <span class="icon">💬</span> Secure Chat
+          </button>
+          <button class="nav-tab" data-view="settings" type="button">
+            <span class="icon">⚙️</span> Settings
+          </button>
+        </nav>
+        <div class="system-time">
+          <span id="navTime">00:00:00</span>
+          <span id="navDate">Sunday, 24 May</span>
+        </div>
+      </header>
 
       <section class="view active" id="homeView">
         <aside class="panel">
@@ -37,6 +64,16 @@
           </div>
           <button class="clap-button" id="clapButton" type="button">Enable Clap Switch</button>
           <p class="clap-hint" id="clapHint">Uses your browser microphone for double-clap switching.</p>
+          <div class="panel-title compact"><span></span><h2>App Launcher</h2></div>
+          <div class="launcher-grid">
+            <button class="launcher-btn" data-app="vscode">VS Code</button>
+            <button class="launcher-btn" data-app="chrome">Chrome</button>
+            <button class="launcher-btn" data-app="edge">Edge</button>
+            <button class="launcher-btn" data-app="spotify">Spotify</button>
+            <button class="launcher-btn" data-app="notepad">Notepad</button>
+            <button class="launcher-btn" data-app="calculator">Calc</button>
+            <button class="launcher-btn" data-app="camera">Camera</button>
+          </div>
         </aside>
 
         <section class="home-core">
@@ -64,6 +101,29 @@
             <p id="weatherLocation">Bangalore, India</p>
             <strong id="weatherTemp">Loading</strong>
             <span id="weatherDetails">Fetching current Bangalore weather...</span>
+          </section>
+          <div class="panel-title compact"><span></span><h2>System Telemetry</h2></div>
+          <section class="telemetry-panel">
+            <div class="telemetry-item">
+              <div class="telemetry-label">
+                <span>CPU Usage</span>
+                <strong id="cpuVal">0%</strong>
+              </div>
+              <div class="telemetry-bar"><i id="cpuBar" style="width: 0%"></i></div>
+            </div>
+            <div class="telemetry-item">
+              <div class="telemetry-label">
+                <span>RAM Usage</span>
+                <strong id="ramVal">0%</strong>
+              </div>
+              <div class="telemetry-bar"><i id="ramBar" style="width: 0%"></i></div>
+            </div>
+            <div class="telemetry-item">
+              <div class="telemetry-label">
+                <span>Processes</span>
+                <strong id="procVal">0</strong>
+              </div>
+            </div>
           </section>
           <div class="panel-title compact"><span></span><h2>Timeline</h2></div>
           <div class="timeline" id="timeline"></div>
@@ -103,6 +163,7 @@
 
       <section class="view voice-layout" id="voiceView">
         <section class="voice-stage">
+          <button class="core-switch-btn" id="voiceToHomeBtn" type="button">CONSOLE</button>
           <canvas id="particleCanvas" width="900" height="620" aria-label="Jarvis particle core"></canvas>
           <div class="core-brand">
             <span>J.A.R.V.I.S CORE</span>
@@ -127,6 +188,99 @@
             </div>
           </div>
           <div class="voice-bars" id="voiceBars"></div>
+        </section>
+      </section>
+
+      <section class="view settings-layout" id="settingsView">
+        <aside class="panel settings-sidebar">
+          <div class="panel-title"><span></span><h2>Config Interface</h2></div>
+          <p class="settings-desc">Fine-tune Jarvis parameters, credentials, voice synthesis, and core memory files here.</p>
+          <div class="readout-list">
+            <article><span>AI Model</span><strong id="activeModelLabel">Loading...</strong></article>
+            <article><span>Provider</span><strong id="activeProviderLabel">Loading...</strong></article>
+            <article><span>Voice Name</span><strong id="activeVoiceLabel">Loading...</strong></article>
+          </div>
+        </aside>
+
+        <section class="settings-panel">
+          <div class="settings-header">
+            <div>
+              <p class="eyebrow">Jarvis Terminal Settings</p>
+              <h2>Adjust System Parameters</h2>
+            </div>
+            <button class="settings-save-btn" id="saveSettingsBtn">Save Configuration</button>
+          </div>
+          
+          <div class="settings-content-grid">
+            <div class="settings-section">
+              <h3>🤖 AI API Provider</h3>
+              <div class="form-group">
+                <label for="settingsProvider">Select Provider</label>
+                <select id="settingsProvider">
+                  <option value="deepseek">DeepSeek API</option>
+                  <option value="openrouter">OpenRouter API</option>
+                  <option value="gemini">Google Gemini API</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="settingsModel">Active Model</label>
+                <input id="settingsModel" placeholder="e.g. gemini-1.5-flash" />
+              </div>
+              <div class="form-group">
+                <label for="settingsDeepseekKey">DeepSeek / OpenRouter Key</label>
+                <div class="key-input-container">
+                  <input id="settingsDeepseekKey" type="password" placeholder="sk-..." />
+                  <button type="button" class="toggle-key-btn" data-target="settingsDeepseekKey">👁️</button>
+                </div>
+              </div>
+              <div class="form-group">
+                <label for="settingsGeminiKey">Gemini API Key</label>
+                <div class="key-input-container">
+                  <input id="settingsGeminiKey" type="password" placeholder="AIzaSy..." />
+                  <button type="button" class="toggle-key-btn" data-target="settingsGeminiKey">👁️</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="settings-section">
+              <h3>🗣️ Assistant Voice & Identity</h3>
+              <div class="form-group">
+                <label for="settingsCreatorName">Creator Name</label>
+                <input id="settingsCreatorName" placeholder="Shivaraj" />
+              </div>
+              <div class="form-group">
+                <label for="settingsAssistantName">Assistant Name</label>
+                <input id="settingsAssistantName" placeholder="Jarvis" />
+              </div>
+              <div class="form-group">
+                <label for="settingsMaxReply">Max Reply Length (Words)</label>
+                <input id="settingsMaxReply" type="number" min="10" max="200" placeholder="45" />
+              </div>
+              <div class="form-group">
+                <label for="settingsVoice">Speech Synthesis Voice</label>
+                <select id="settingsVoice">
+                  <option value="en-GB-RyanNeural">Ryan (Neural, Male, UK)</option>
+                  <option value="en-US-GuyNeural">Guy (Neural, Male, US)</option>
+                  <option value="en-US-JennyNeural">Jenny (Neural, Female, US)</option>
+                  <option value="en-US-AriaNeural">Aria (Neural, Female, US)</option>
+                  <option value="en-IN-NeerjaNeural">Neerja (Neural, Female, India)</option>
+                  <option value="en-IN-PrabhatNeural">Prabhat (Neural, Male, India)</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="settings-section full-width">
+              <h3>🧠 System Memories (memory.json)</h3>
+              <p class="memory-desc">Items stored here are injected into Jarvis' persistent context.</p>
+              <div class="memory-input-group">
+                <input id="newMemoryInput" placeholder="Add a memory (e.g. My birthday is November 12)..." />
+                <button type="button" id="addMemoryBtn">Add Cortex Memory</button>
+              </div>
+              <div class="memory-list" id="settingsMemoryList">
+                <!-- Memory tags will be populated here -->
+              </div>
+            </div>
+          </div>
         </section>
       </section>
     </main>

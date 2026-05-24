@@ -1,0 +1,10 @@
+{
+    "creator_name": "Shivaraj",
+    "assistant_name": "Jarvis",
+    "api_provider": "deepseek",
+    "deepseek_api_key": "",
+    "gemini_api_key": "",
+    "active_model": "",
+    "max_reply_words": 50,
+    "active_voice": "en-GB-RyanNeural"
+}

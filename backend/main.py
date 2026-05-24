@@ -8,6 +8,7 @@ import threading
 import time
 import uuid
 import webbrowser
+import json
 from dataclasses import dataclass, field
 from datetime import datetime
 from ctypes import wintypes
@@ -20,7 +21,6 @@ import psutil
 import pyautogui
 import pygame
 import pygetwindow as gw
-import pywhatkit
 import requests
 import speech_recognition as sr
 from flask import Flask, jsonify, request
@@ -52,9 +52,53 @@ class JarvisConfig:
     language_code: dict[str, str] = field(default_factory=lambda: {
         "english": "en-US",
     })
+    api_provider: str = "deepseek"
+    deepseek_api_key: str = ""
+    gemini_api_key: str = ""
+    active_model: str = ""
 
 
 CONFIG = JarvisConfig()
+CONFIG_FILE = "backend/config.json"
+
+def load_config_file() -> None:
+    global CONFIG
+    if os.path.exists(CONFIG_FILE):
+        try:
+            with open(CONFIG_FILE, "r") as f:
+                data = json.load(f)
+                CONFIG.creator_name = data.get("creator_name", CONFIG.creator_name)
+                CONFIG.assistant_name = data.get("assistant_name", CONFIG.assistant_name)
+                CONFIG.api_provider = data.get("api_provider", CONFIG.api_provider)
+                CONFIG.deepseek_api_key = data.get("deepseek_api_key", CONFIG.deepseek_api_key)
+                CONFIG.gemini_api_key = data.get("gemini_api_key", CONFIG.gemini_api_key)
+                CONFIG.active_model = data.get("active_model", CONFIG.active_model)
+                CONFIG.max_reply_words = int(data.get("max_reply_words", CONFIG.max_reply_words))
+                voice = data.get("active_voice", "en-GB-RyanNeural")
+                CONFIG.voice_map["english"] = voice
+            print(f"[CONFIG] Loaded configuration from {CONFIG_FILE}")
+        except Exception as e:
+            print("Error loading config:", e)
+
+def save_config_file() -> None:
+    try:
+        data = {
+            "creator_name": CONFIG.creator_name,
+            "assistant_name": CONFIG.assistant_name,
+            "api_provider": CONFIG.api_provider,
+            "deepseek_api_key": CONFIG.deepseek_api_key,
+            "gemini_api_key": CONFIG.gemini_api_key,
+            "active_model": CONFIG.active_model,
+            "max_reply_words": CONFIG.max_reply_words,
+            "active_voice": CONFIG.voice_map.get("english", "en-GB-RyanNeural")
+        }
+        with open(CONFIG_FILE, "w") as f:
+            json.dump(data, f, indent=4)
+        print(f"[CONFIG] Saved configuration to {CONFIG_FILE}")
+    except Exception as e:
+        print("Error saving config:", e)
+
+CHAT_HISTORY: list[dict[str, str]] = []
 
 
 # =========================================
@@ -91,7 +135,7 @@ def status_api():
 def add_cors_headers(response):
     response.headers["Access-Control-Allow-Origin"] = "*"
     response.headers["Access-Control-Allow-Headers"] = "Content-Type"
-    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS, DELETE"
     return response
 
 
@@ -106,11 +150,138 @@ def chat_api():
     if not message:
         return jsonify({"reply": "Type a question first."}), 400
 
+    # 1. Check if it matches any local system command (e.g. "open notepad", "what time is it")
+    send_status("processing", "Checking command...")
+    if execute_command(message.lower()):
+        send_status("idle", "Command executed")
+        return jsonify({"reply": "Command executed successfully."})
+
+    # 2. Otherwise, route to the selected AI model
     send_status("processing", "Answering typed question...")
     reply = get_ai_response(message)
     send_status("idle", "Typed answer ready")
 
+    # Speak the AI response asynchronously in a daemon thread so it doesn't block the API response!
+    threading.Thread(target=speak_sync, args=(reply,), daemon=True).start()
+
     return jsonify({"reply": reply})
+
+
+@app.route("/api/settings", methods=["GET", "POST", "OPTIONS"])
+def settings_api():
+    global CONFIG
+    if request.method == "OPTIONS":
+        return ("", 204)
+        
+    if request.method == "POST":
+        data = request.get_json(silent=True) or {}
+        CONFIG.creator_name = data.get("creator_name", CONFIG.creator_name)
+        CONFIG.assistant_name = data.get("assistant_name", CONFIG.assistant_name)
+        CONFIG.api_provider = data.get("api_provider", CONFIG.api_provider)
+        CONFIG.deepseek_api_key = data.get("deepseek_api_key", CONFIG.deepseek_api_key)
+        CONFIG.gemini_api_key = data.get("gemini_api_key", CONFIG.gemini_api_key)
+        CONFIG.active_model = data.get("active_model", CONFIG.active_model)
+        
+        try:
+            CONFIG.max_reply_words = int(data.get("max_reply_words", CONFIG.max_reply_words))
+        except ValueError:
+            pass
+            
+        voice = data.get("active_voice", CONFIG.voice_map.get("english", "en-GB-RyanNeural"))
+        CONFIG.voice_map["english"] = voice
+        save_config_file()
+        return jsonify({"status": "success", "message": "Settings updated"})
+    
+    return jsonify({
+        "creator_name": CONFIG.creator_name,
+        "assistant_name": CONFIG.assistant_name,
+        "api_provider": getattr(CONFIG, "api_provider", "deepseek"),
+        "deepseek_api_key": getattr(CONFIG, "deepseek_api_key", ""),
+        "gemini_api_key": getattr(CONFIG, "gemini_api_key", ""),
+        "active_model": getattr(CONFIG, "active_model", ""),
+        "max_reply_words": CONFIG.max_reply_words,
+        "active_voice": CONFIG.voice_map.get("english", "en-GB-RyanNeural")
+    })
+
+
+@app.route("/api/launch_app", methods=["POST", "OPTIONS"])
+def launch_app_api():
+    if request.method == "OPTIONS":
+        return ("", 204)
+        
+    data = request.get_json(silent=True) or {}
+    app_name = data.get("app", "").lower().strip()
+    
+    launch_commands = {
+        "notepad": "notepad",
+        "calculator": "calc",
+        "vscode": "code",
+        "spotify": "start spotify",
+        "chrome": "start chrome",
+        "edge": "start msedge",
+        "camera": "start microsoft.windows.camera:"
+    }
+    
+    if app_name in launch_commands:
+        command = launch_commands[app_name]
+        try:
+            subprocess.Popen(command, shell=True)
+            remember_opened_app(app_name)
+            speak_sync(f"Opening {app_name}")
+            return jsonify({"status": "success", "message": f"Launched {app_name}"})
+        except Exception as e:
+            return jsonify({"status": "error", "message": f"Failed to launch: {e}"}), 500
+            
+    return jsonify({"status": "error", "message": f"App {app_name} not recognized"}), 400
+
+
+@app.route("/api/memories", methods=["GET", "POST", "DELETE", "OPTIONS"])
+def memories_api():
+    if request.method == "OPTIONS":
+        return ("", 204)
+        
+    memory_file = "backend/memory.json"
+    
+    # Ensure memory file exists
+    if not os.path.exists(memory_file):
+        try:
+            with open(memory_file, "w") as f:
+                json.dump({"memories": []}, f)
+        except Exception:
+            pass
+            
+    try:
+        with open(memory_file, "r") as f:
+            mem_data = json.load(f)
+    except Exception:
+        mem_data = {"memories": []}
+        
+    if request.method == "POST":
+        data = request.get_json(silent=True) or {}
+        new_memory = data.get("memory", "").strip()
+        if new_memory:
+            if new_memory not in mem_data["memories"]:
+                mem_data["memories"].append(new_memory)
+                try:
+                    with open(memory_file, "w") as f:
+                        json.dump(mem_data, f, indent=4)
+                except Exception as e:
+                    return jsonify({"status": "error", "message": str(e)}), 500
+            return jsonify({"status": "success", "memories": mem_data["memories"]})
+            
+    elif request.method == "DELETE":
+        data = request.get_json(silent=True) or {}
+        memory_to_delete = data.get("memory", "").strip()
+        if memory_to_delete in mem_data["memories"]:
+            mem_data["memories"].remove(memory_to_delete)
+            try:
+                with open(memory_file, "w") as f:
+                    json.dump(mem_data, f, indent=4)
+            except Exception as e:
+                return jsonify({"status": "error", "message": str(e)}), 500
+        return jsonify({"status": "success", "memories": mem_data["memories"]})
+        
+    return jsonify({"memories": mem_data.get("memories", [])})
 
 
 # =========================================
@@ -898,7 +1069,13 @@ def play_youtube(text: str) -> None:
         speak_sync("Tell me what to play")
         return
 
-    pywhatkit.playonyt(song)
+    try:
+        import pywhatkit
+        pywhatkit.playonyt(song)
+    except Exception as e:
+        print("YouTube play error:", e)
+        webbrowser.open(f"https://www.youtube.com/results?search_query={quote_plus(song)}")
+
     remember_opened_app("browser")
     speak_sync(f"Playing {song}")
 
@@ -944,6 +1121,30 @@ def extract_spotify_song(text: str) -> str:
     return song.strip()
 
 
+def get_spotify_track_id(song_name: str) -> str:
+    import urllib.request
+    import re
+    from urllib.parse import quote
+    try:
+        query = f"site:open.spotify.com/track {song_name}"
+        url = f"https://html.duckduckgo.com/html/?q={quote(query)}"
+        req = urllib.request.Request(
+            url, 
+            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
+        )
+        with urllib.request.urlopen(req, timeout=4) as response:
+            html = response.read().decode('utf-8', errors='ignore')
+        
+        match = re.search(r'open\.spotify\.com/track/([a-zA-Z0-9]+)', html)
+        if match:
+            track_id = match.group(1)
+            print(f"Found Spotify track ID for '{song_name}': {track_id}")
+            return track_id
+    except Exception as e:
+        print("Error searching Spotify track ID:", e)
+    return ""
+
+
 def play_spotify(text: str) -> None:
     song = extract_spotify_song(text)
 
@@ -954,22 +1155,38 @@ def play_spotify(text: str) -> None:
         speak_sync("Spotify play cancelled")
         return
 
-    send_status("executing", f"Opening Spotify for {song}")
+    send_status("executing", f"Searching Spotify track for {song}")
+    track_id = get_spotify_track_id(song)
 
-    try:
-        os.startfile(f"spotify:search:{quote(song)}")
-        remember_opened_app("spotify")
-        time.sleep(3.5)
+    if track_id:
+        send_status("executing", f"Playing {song} on Spotify")
+        try:
+            os.startfile(f"spotify:track:{track_id}")
+            remember_opened_app("spotify")
+            speak_sync(f"Playing {song} on Spotify")
+        except Exception as e:
+            print("Spotify desktop app play error:", e)
+            webbrowser.open(f"https://open.spotify.com/track/{track_id}")
+            remember_opened_app("browser")
+            speak_sync(f"Playing {song} on Spotify web player")
+    else:
+        # Fallback to search query
+        send_status("executing", f"Opening Spotify search for {song}")
+        try:
+            os.startfile(f"spotify:search:{quote(song)}")
+            remember_opened_app("spotify")
+            time.sleep(3.5)
 
-        if activate_window_by_title(("spotify",)):
-            pyautogui.press("enter")
+            if activate_window_by_title(("spotify",)):
+                pyautogui.press("enter")
 
-        speak_sync(f"Opening {song} on Spotify")
-    except Exception as e:
-        print("Spotify app error:", e)
-        webbrowser.open(f"https://open.spotify.com/search/{quote(song)}")
-        remember_opened_app("browser")
-        speak_sync(f"Opening Spotify search for {song}")
+            speak_sync(f"Opening Spotify search for {song}")
+        except Exception as e:
+            print("Spotify app search error:", e)
+            webbrowser.open(f"https://open.spotify.com/search/{quote(song)}")
+            remember_opened_app("browser")
+            speak_sync(f"Opening Spotify search for {song}")
+
 
 
 def confirm_laptop_action(action_name: str) -> bool:
@@ -1008,16 +1225,117 @@ def lock_laptop() -> None:
 # AI RESPONSE
 # =========================================
 
+def get_gemini_response(text: str, api_key: str, model_name: str = "gemini-1.5-flash") -> str:
+    if not api_key:
+        return "Gemini API key is missing. Set it in Settings."
+        
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+    headers = {"Content-Type": "application/json"}
+    
+    # Load memories
+    memories_bullet = ""
+    try:
+        if os.path.exists("backend/memory.json"):
+            with open("backend/memory.json", "r") as f:
+                mem_data = json.load(f)
+                m_list = mem_data.get("memories", [])
+                if m_list:
+                    memories_bullet = "\nThings you MUST remember about the creator/user:\n" + "\n".join(f"- {m}" for m in m_list)
+    except Exception:
+        pass
+        
+    system_instruction = f"""
+You are {CONFIG.assistant_name}, a concise AI assistant created by {CONFIG.creator_name}.
+Current real local time: {current_time_context()}.
+{memories_bullet}
+
+Rules:
+- Keep normal answers under {CONFIG.max_reply_words} words.
+- Use one or two short sentences.
+- For time, date, or today questions, use the current real local time above.
+- If asked for latest news, live weather, scores, prices, or current internet facts, say you need a connected web/API source unless the user asks you to open a search.
+- Give longer answers only when the user asks for full detail, explain, or step-by-step.
+"""
+    
+    # Build contents from CHAT_HISTORY
+    contents = []
+    for msg in CHAT_HISTORY[:-1]:
+        role = "user" if msg["role"] == "user" else "model"
+        contents.append({
+            "role": role,
+            "parts": [{"text": msg["content"]}]
+        })
+        
+    # Append current message
+    contents.append({
+        "role": "user",
+        "parts": [{"text": text}]
+    })
+    
+    payload = {
+        "contents": contents,
+        "systemInstruction": {
+            "parts": [{"text": system_instruction}]
+        },
+        "generationConfig": {
+            "temperature": 0.3,
+            "maxOutputTokens": 180
+        }
+    }
+    
+    try:
+        response = requests.post(url, headers=headers, json=payload, timeout=20)
+        if response.status_code == 200:
+            res_data = response.json()
+            reply = res_data["candidates"][0]["content"]["parts"][0]["text"].strip()
+            return shorten_reply(reply)
+        else:
+            print("Gemini API error:", response.status_code, response.text)
+            return f"Gemini returned error {response.status_code}."
+    except Exception as e:
+        print("Gemini connection error:", e)
+        return "Gemini API connection failed."
+
+
 def get_ai_response(text: str) -> str:
-    api_key = os.getenv("DEEPSEEK_API_KEY")
+    global CHAT_HISTORY
+    
+    # Add user message to history
+    CHAT_HISTORY.append({"role": "user", "content": text})
+    if len(CHAT_HISTORY) > 15:
+        CHAT_HISTORY = CHAT_HISTORY[-15:]
+        
+    provider = getattr(CONFIG, "api_provider", "deepseek")
+    
+    if provider == "gemini":
+        api_key = getattr(CONFIG, "gemini_api_key", "")
+        if not api_key:
+            api_key = os.getenv("GEMINI_API_KEY", "")
+        model = getattr(CONFIG, "active_model", "") or "gemini-1.5-flash"
+        reply = get_gemini_response(text, api_key, model)
+        CHAT_HISTORY.append({"role": "assistant", "content": reply})
+        return reply
+
+    # Otherwise DeepSeek or OpenRouter
+    api_key = ""
+    if provider == "deepseek":
+        api_key = getattr(CONFIG, "deepseek_api_key", "")
+        if not api_key:
+            api_key = os.getenv("DEEPSEEK_API_KEY", "")
+    elif provider == "openrouter":
+        api_key = getattr(CONFIG, "deepseek_api_key", "") # fallback to deepseek key in settings
+        if not api_key:
+            api_key = os.getenv("OPENROUTER_API_KEY", "") or os.getenv("DEEPSEEK_API_KEY", "")
 
     if not api_key:
-        return "API key is missing. Set DEEPSEEK_API_KEY in this terminal first."
+        return "API key is missing. Set it in the Settings tab."
 
     api_key = api_key.strip().strip('"').strip("'")
-    is_openrouter_key = api_key.startswith("sk-or-")
+    is_openrouter_key = api_key.startswith("sk-or-") or provider == "openrouter"
     api_url = CONFIG.openrouter_api_url if is_openrouter_key else CONFIG.deepseek_api_url
-    model = CONFIG.openrouter_model if is_openrouter_key else CONFIG.deepseek_model
+    
+    default_model = CONFIG.openrouter_model if is_openrouter_key else CONFIG.deepseek_model
+    model = getattr(CONFIG, "active_model", "") or default_model
     provider_name = "OpenRouter" if is_openrouter_key else "DeepSeek"
 
     headers = {
@@ -1029,20 +1347,21 @@ def get_ai_response(text: str) -> str:
         headers["HTTP-Referer"] = "http://localhost:5000"
         headers["X-Title"] = "Secure Jarvis AI Agent"
 
+    memories_bullet = ""
     try:
-        response = requests.post(
-            api_url,
-            headers=headers,
-            json={
-                "model": model,
-                "temperature": 0.3,
-                "max_tokens": 180,
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": f"""
+        if os.path.exists("backend/memory.json"):
+            with open("backend/memory.json", "r") as f:
+                mem_data = json.load(f)
+                m_list = mem_data.get("memories", [])
+                if m_list:
+                    memories_bullet = "\nThings to remember about the creator/user:\n" + "\n".join(f"- {m}" for m in m_list)
+    except Exception:
+        pass
+
+    system_content = f"""
 You are {CONFIG.assistant_name}, a concise AI assistant created by {CONFIG.creator_name}.
 Current real local time: {current_time_context()}.
+{memories_bullet}
 
 Rules:
 - Keep normal answers under {CONFIG.max_reply_words} words.
@@ -1051,9 +1370,22 @@ Rules:
 - If asked for latest news, live weather, scores, prices, or current internet facts, say you need a connected web/API source unless the user asks you to open a search.
 - Give longer answers only when the user asks for full detail, explain, or step-by-step.
 """
-                    },
-                    {"role": "user", "content": text}
-                ],
+
+    messages = [{"role": "system", "content": system_content}]
+    
+    # Filter CHAT_HISTORY to only contain elements before the current user message that we appended
+    # But since CHAT_HISTORY is standard user-assistant structure, we can just use messages from it.
+    messages.extend(CHAT_HISTORY)
+
+    try:
+        response = requests.post(
+            api_url,
+            headers=headers,
+            json={
+                "model": model,
+                "temperature": 0.3,
+                "max_tokens": 180,
+                "messages": messages,
             },
             timeout=30
         )
@@ -1073,7 +1405,9 @@ Rules:
 
         data = response.json()
         reply = data["choices"][0]["message"]["content"].strip()
-        return shorten_reply(reply)
+        reply = shorten_reply(reply)
+        CHAT_HISTORY.append({"role": "assistant", "content": reply})
+        return reply
 
     except requests.exceptions.Timeout:
         return "DeepSeek took too long to respond. Check your internet and try again."
@@ -1156,9 +1490,31 @@ def start_jarvis() -> None:
             send_status("error", str(e))
 
 
+def emit_system_stats() -> None:
+    print("[TELEMETRY] System telemetry thread active.")
+    while True:
+        try:
+            cpu = psutil.cpu_percent(interval=None)
+            ram = psutil.virtual_memory().percent
+            processes = len(list(psutil.process_iter()))
+            socketio.emit("system_telemetry", {
+                "cpu": cpu,
+                "ram": ram,
+                "processes": processes
+            })
+        except Exception as e:
+            print("Telemetry emit error:", e)
+        time.sleep(2)
+
+
 if __name__ == "__main__":
+    load_config_file()
+    
     jarvis_thread = threading.Thread(target=start_jarvis, daemon=True)
     jarvis_thread.start()
+
+    telemetry_thread = threading.Thread(target=emit_system_stats, daemon=True)
+    telemetry_thread.start()
 
     socketio.run(
         app,
