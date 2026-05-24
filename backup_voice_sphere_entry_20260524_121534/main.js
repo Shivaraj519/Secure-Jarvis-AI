@@ -76,9 +76,7 @@ const el = {
 };
 
 const viewOrder = ["home", "voice", "chat"];
-let activeView = "";
-let viewOpenTimer = 0;
-let voiceOpenTimer = 0;
+let activeView = "home";
 let clapEnabled = false;
 let lastClapAt = 0;
 let firstClapAt = 0;
@@ -153,38 +151,16 @@ function speakBootLine(text, reset = false) {
 }
 
 function setView(viewName) {
-  const previousView = activeView;
   activeView = viewName;
-  document.querySelectorAll(".view").forEach((view) => {
-    view.classList.remove("active", "view-opening", "voice-opening");
-  });
-  const targetView = document.getElementById(`${viewName}View`);
-  targetView.classList.add("active");
-
-  if (previousView !== viewName) {
-    targetView.classList.remove("view-opening");
-    void targetView.offsetWidth;
-    targetView.classList.add("view-opening");
-    clearTimeout(viewOpenTimer);
-    viewOpenTimer = setTimeout(() => targetView.classList.remove("view-opening"), 1850);
-  }
-
-  if (viewName === "voice" && previousView !== "voice") {
-    targetView.classList.remove("voice-opening");
-    void targetView.offsetWidth;
-    targetView.classList.add("voice-opening");
-    clearTimeout(voiceOpenTimer);
-    voiceOpenTimer = setTimeout(() => targetView.classList.remove("voice-opening"), 1850);
-  }
+  document.querySelectorAll(".view").forEach((view) => view.classList.remove("active"));
+  document.getElementById(`${viewName}View`).classList.add("active");
 }
 
 function openViewFromHash() {
   const viewName = window.location.hash.replace("#", "").toLowerCase();
   if (viewOrder.includes(viewName)) {
     setView(viewName);
-    return true;
   }
-  return false;
 }
 
 function switchViewByClap() {
@@ -649,12 +625,8 @@ function initParticles() {
 
   function resize() {
     const rect = canvas.getBoundingClientRect();
-    const nextWidth = Math.max(1, Math.floor(rect.width * devicePixelRatio));
-    const nextHeight = Math.max(1, Math.floor(rect.height * devicePixelRatio));
-    if (canvas.width !== nextWidth || canvas.height !== nextHeight) {
-      canvas.width = nextWidth;
-      canvas.height = nextHeight;
-    }
+    canvas.width = Math.max(760, Math.floor(rect.width * devicePixelRatio));
+    canvas.height = Math.max(520, Math.floor(rect.height * devicePixelRatio));
   }
 
   function statusTone() {
@@ -670,25 +642,25 @@ function initParticles() {
     if (state.status === "speaking" || state.status === "heard") {
       return {
         core: "rgba(52, 211, 153, ",
-        glow: "rgba(34, 197, 94, ",
-        accent: "rgba(187, 247, 208, ",
+        glow: "rgba(103, 232, 249, ",
+        accent: "rgba(251, 191, 36, ",
         rgb: "52, 211, 153",
       };
     }
 
     if (state.status === "processing" || state.status === "executing") {
       return {
-        core: "rgba(103, 232, 249, ",
-        glow: "rgba(14, 165, 233, ",
-        accent: "rgba(226, 244, 255, ",
-        rgb: "103, 232, 249",
+        core: "rgba(251, 191, 36, ",
+        glow: "rgba(167, 139, 250, ",
+        accent: "rgba(103, 232, 249, ",
+        rgb: "251, 191, 36",
       };
     }
 
     return {
       core: "rgba(103, 232, 249, ",
       glow: "rgba(34, 211, 238, ",
-      accent: "rgba(226, 244, 255, ",
+      accent: "rgba(167, 139, 250, ",
       rgb: "103, 232, 249",
     };
   }
@@ -696,9 +668,9 @@ function initParticles() {
   function drawRadialBackground(cx, cy, width, height, boost, tone) {
     const far = Math.max(width, height);
     const halo = ctx.createRadialGradient(cx, cy, 6, cx, cy, far * 0.52);
-    halo.addColorStop(0, tone.core + `${0.07 + boost * 0.06})`);
-    halo.addColorStop(0.24, tone.glow + `${0.055 + boost * 0.07})`);
-    halo.addColorStop(0.52, tone.accent + `${0.018 + boost * 0.03})`);
+    halo.addColorStop(0, tone.core + `${0.24 + boost * 0.16})`);
+    halo.addColorStop(0.18, tone.glow + `${0.12 + boost * 0.14})`);
+    halo.addColorStop(0.45, tone.accent + `${0.05 + boost * 0.08})`);
     halo.addColorStop(1, "rgba(1, 6, 13, 0)");
 
     ctx.fillStyle = "rgba(1, 6, 13, 0.74)";
@@ -706,6 +678,13 @@ function initParticles() {
     ctx.fillStyle = halo;
     ctx.fillRect(0, 0, width, height);
 
+    const sweep = ctx.createLinearGradient(0, cy - height * 0.3, width, cy + height * 0.35);
+    sweep.addColorStop(0, "rgba(103, 232, 249, 0)");
+    sweep.addColorStop(0.46, tone.glow + `${0.04 + boost * 0.05})`);
+    sweep.addColorStop(0.52, tone.accent + `${0.06 + boost * 0.08})`);
+    sweep.addColorStop(1, "rgba(103, 232, 249, 0)");
+    ctx.fillStyle = sweep;
+    ctx.fillRect(0, 0, width, height);
   }
 
   function drawDust(width, height, boost, tone) {
@@ -793,6 +772,7 @@ function initParticles() {
   }
 
   function drawSphere(cx, cy, radius, boost, tone, sleeping, speaking, thinking) {
+    const points = [];
     const sphereRadius = radius * (0.96 + boost * 0.08) * devicePixelRatio;
     const rotY = tick * 0.0065 * (1 + boost * 1.8);
     const rotX = Math.sin(tick * 0.0032) * 0.46;
@@ -824,6 +804,8 @@ function initParticles() {
       const perspective = 0.72 + depth * 0.46;
       const x = cx + x3 * perspective;
       const y = cy + y3 * perspective;
+      points.push({ x, y, z: z3, depth, index });
+
       const alpha = sleeping ? 0.12 + depth * 0.28 : 0.2 + depth * 0.74;
       const particleColor = particle.tint > 0.82 ? tone.accent : particle.tint > 0.62 ? tone.core : tone.glow;
       ctx.beginPath();
@@ -833,7 +815,21 @@ function initParticles() {
       ctx.arc(x, y, particle.size * devicePixelRatio * perspective * (1 + boost * 0.32), 0, TWO_PI);
       ctx.fill();
     });
+
     ctx.shadowBlur = 0;
+    ctx.lineWidth = 0.7 * devicePixelRatio;
+    for (let index = 0; index < points.length; index += 11) {
+      const a = points[index];
+      const b = points[(index + 37) % points.length];
+      const distance = Math.hypot(a.x - b.x, a.y - b.y);
+      if (distance < 126 * devicePixelRatio && Math.abs(a.z - b.z) < sphereRadius * 0.42 && a.depth > 0.32 && b.depth > 0.32) {
+        ctx.strokeStyle = tone.glow + `${sleeping ? 0.035 : 0.075 + boost * 0.09})`;
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+      }
+    }
   }
 
   function drawCore(cx, cy, radius, boost, tone, speaking) {
@@ -886,22 +882,26 @@ function initParticles() {
 
   function draw() {
     tick += 1;
-    resize();
     const width = canvas.width;
     const height = canvas.height;
     const cx = width / 2;
-    const cy = height * 0.43;
+    const cy = height / 2;
     const boost = Math.max(state.particleBoost, state.audioLevel * 0.85);
     const sleeping = isSleepMode();
     const speaking = state.status === "speaking" || state.status === "heard";
     const thinking = state.status === "processing" || state.status === "executing";
     const tone = statusTone();
     const base = Math.min(width, height) / devicePixelRatio;
-    const coreRadius = Math.min(230, base * 0.31);
+    const coreRadius = Math.min(250, base * 0.34);
 
     ctx.clearRect(0, 0, width, height);
     drawRadialBackground(cx, cy, width, height, boost, tone);
+    drawDust(width, height, boost, tone);
+    drawHudRings(cx, cy, coreRadius, boost, tone);
+    drawVoiceSpikes(cx, cy, coreRadius, boost, tone);
     drawSphere(cx, cy, coreRadius, boost, tone, sleeping, speaking, thinking);
+    drawCore(cx, cy, coreRadius, boost, tone, speaking);
+    drawLens(cx, cy, width, height, boost, tone);
 
     requestAnimationFrame(draw);
   }
@@ -936,9 +936,7 @@ initParticles();
 setBackend(socket.connected);
 setStatus("sleeping", "Standing by for your command.");
 pollBackendStatus();
-if (!openViewFromHash()) {
-  setView("home");
-}
+openViewFromHash();
 
 setInterval(updateClock, 1000);
 setInterval(initWeather, 15 * 60 * 1000);

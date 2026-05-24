@@ -1,5 +1,4 @@
 import asyncio
-import ctypes
 import os
 import subprocess
 import tempfile
@@ -10,7 +9,6 @@ import uuid
 import webbrowser
 from dataclasses import dataclass, field
 from datetime import datetime
-from ctypes import wintypes
 from typing import Callable
 from urllib.parse import quote, quote_plus
 
@@ -138,7 +136,7 @@ OPENED_APPS: list[str] = []
 
 
 APP_PROCESSES = {
-    "browser": ["msedge.exe"],
+    "browser": ["msedge.exe", "chrome.exe"],
     "edge": ["msedge.exe"],
     "microsoft edge": ["msedge.exe"],
     "chrome": ["chrome.exe"],
@@ -357,14 +355,6 @@ BROWSER_TITLE_KEYWORDS = {
 }
 
 
-BROWSER_PROCESS_NAMES = {
-    "edge": ("msedge.exe",),
-    "microsoft edge": ("msedge.exe",),
-    "chrome": ("chrome.exe",),
-    "browser": ("msedge.exe",),
-}
-
-
 def clean_command_query(text: str, prefixes: tuple[str, ...], suffixes: tuple[str, ...] = ()) -> str:
     query = text.strip()
     found_prefix = False
@@ -454,77 +444,6 @@ def find_browser_window(browser_name: str | None = None):
     return None
 
 
-def find_window_handle_by_process(process_names: tuple[str, ...] | list[str]) -> int | None:
-    if os.name != "nt":
-        return None
-
-    target_names = {name.lower() for name in process_names}
-    found_handle: list[int] = []
-    user32 = ctypes.windll.user32
-
-    enum_windows_proc = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
-
-    @enum_windows_proc
-    def enum_window(hwnd, _lparam):
-        if found_handle:
-            return False
-
-        if not user32.IsWindowVisible(hwnd):
-            return True
-
-        title_length = user32.GetWindowTextLengthW(hwnd)
-        if title_length <= 0:
-            return True
-
-        pid = wintypes.DWORD()
-        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
-
-        try:
-            process_name = psutil.Process(pid.value).name().lower()
-        except Exception:
-            return True
-
-        if process_name in target_names:
-            found_handle.append(int(hwnd))
-            return False
-
-        return True
-
-    try:
-        user32.EnumWindows(enum_window, 0)
-    except Exception as e:
-        print("Process window lookup error:", e)
-
-    return found_handle[0] if found_handle else None
-
-
-def activate_window_handle(hwnd: int | None) -> bool:
-    if not hwnd or os.name != "nt":
-        return False
-
-    try:
-        user32 = ctypes.windll.user32
-        if user32.IsIconic(hwnd):
-            user32.ShowWindow(hwnd, 9)
-
-        user32.SetForegroundWindow(hwnd)
-        time.sleep(0.55)
-        return True
-    except Exception as e:
-        print("Window handle activation error:", e)
-        return False
-
-
-def activate_browser_window(browser_name: str = "edge") -> bool:
-    window = find_browser_window(browser_name)
-    if window and activate_window(window):
-        return True
-
-    process_names = BROWSER_PROCESS_NAMES.get(browser_name, (browser_name,))
-    hwnd = find_window_handle_by_process(process_names)
-    return activate_window_handle(hwnd)
-
-
 def active_window_title() -> str:
     try:
         active = gw.getActiveWindow()
@@ -534,24 +453,24 @@ def active_window_title() -> str:
 
 
 def close_current_browser_tab(browser_name: str | None = None) -> bool:
-    browser_name = browser_name or "edge"
-    if not activate_browser_window(browser_name):
-        speak_sync("I could not find an open Microsoft Edge window")
+    window = find_browser_window(browser_name)
+    if not window or not activate_window(window):
+        speak_sync("I could not find an open browser window")
         return False
 
     pyautogui.hotkey("ctrl", "w")
-    speak_sync("Closed the current Microsoft Edge tab")
+    speak_sync("Closed the current browser tab")
     return True
 
 
 def close_all_browser_tabs(browser_name: str | None = None) -> bool:
-    browser_name = browser_name or "edge"
-    if not activate_browser_window(browser_name):
-        speak_sync("I could not find an open Microsoft Edge window")
+    window = find_browser_window(browser_name)
+    if not window or not activate_window(window):
+        speak_sync("I could not find an open browser window")
         return False
 
     pyautogui.hotkey("ctrl", "shift", "w")
-    speak_sync("Closed all tabs in the current Microsoft Edge window")
+    speak_sync("Closed all tabs in the current browser window")
     return True
 
 
@@ -676,103 +595,43 @@ def record_video(seconds: int = 10) -> None:
 
 def send_whatsapp_app_message(contact_name: str, message: str) -> None:
     try:
-        whatsapp_window = open_whatsapp_window()
+        send_status("executing", "Opening WhatsApp...")
+        windows = gw.getWindowsWithTitle("WhatsApp")
 
-        if not whatsapp_window:
-            speak_sync("I could not open WhatsApp. Please open WhatsApp once, then try again.")
-            return
+        if windows:
+            whatsapp_window = windows[0]
+            whatsapp_window.activate()
+            time.sleep(0.7)
+        else:
+            os.system("start whatsapp:")
+            time.sleep(7)
+            windows = gw.getWindowsWithTitle("WhatsApp")
 
-        send_status("executing", f"Searching WhatsApp contact: {contact_name}")
+            if not windows:
+                speak_sync("WhatsApp did not open")
+                return
+
+            whatsapp_window = windows[0]
+            whatsapp_window.activate()
+            time.sleep(1)
+
+        send_status("executing", f"Searching contact: {contact_name}")
         pyautogui.hotkey("ctrl", "f")
-        time.sleep(1.0)
+        time.sleep(0.8)
         pyautogui.write(contact_name, interval=0.01)
         time.sleep(1.5)
         pyautogui.press("enter")
-        time.sleep(2.0)
+        time.sleep(1.5)
 
         send_status("executing", "Typing WhatsApp message")
         pyautogui.write(message, interval=0.01)
         time.sleep(0.5)
         pyautogui.press("enter")
-        speak_sync("WhatsApp message sent")
+        speak_sync("Message sent")
 
     except Exception as e:
         print("WhatsApp error:", e)
         speak_sync("Failed to send WhatsApp message")
-
-
-def find_whatsapp_window():
-    try:
-        windows = gw.getAllWindows()
-    except Exception as e:
-        print("WhatsApp window lookup error:", e)
-        return None
-
-    for window in windows:
-        title = (window.title or "").lower()
-        if "whatsapp" in title:
-            return window
-
-    return None
-
-
-def wait_for_whatsapp_window(timeout: float = 10.0):
-    deadline = time.time() + timeout
-
-    while time.time() < deadline:
-        window = find_whatsapp_window()
-        if window:
-            return window
-        time.sleep(0.5)
-
-    return None
-
-
-def open_whatsapp_window():
-    send_status("executing", "Opening WhatsApp...")
-
-    window = find_whatsapp_window()
-    if window and activate_window(window):
-        return window
-
-    launch_attempts = [
-        lambda: os.startfile("whatsapp:"),
-        lambda: subprocess.Popen("start whatsapp:", shell=True),
-        lambda: subprocess.Popen(
-            r'explorer.exe shell:AppsFolder\5319275A.WhatsAppDesktop_cv1g1gvanyjgm!App',
-            shell=True,
-        ),
-    ]
-
-    for launch in launch_attempts:
-        try:
-            launch()
-            window = wait_for_whatsapp_window(timeout=8)
-            if window and activate_window(window):
-                return window
-        except Exception as e:
-            print("WhatsApp launch attempt failed:", e)
-
-    try:
-        pyautogui.press("win")
-        time.sleep(0.5)
-        pyautogui.write("WhatsApp", interval=0.02)
-        time.sleep(0.4)
-        pyautogui.press("enter")
-        window = wait_for_whatsapp_window(timeout=10)
-        if window and activate_window(window):
-            return window
-    except Exception as e:
-        print("WhatsApp Start menu launch failed:", e)
-
-    return None
-
-
-def open_whatsapp_command() -> None:
-    if open_whatsapp_window():
-        speak_sync("Opening WhatsApp")
-    else:
-        speak_sync("I could not open WhatsApp")
 
 
 # =========================================
@@ -808,15 +667,15 @@ def execute_command(text: str) -> bool:
         (lambda t: "date" in t or "today's date" in t, speak_current_date),
         (lambda t: "day" in t or "what is today" in t, speak_current_day),
         (lambda t: "speak english" in t, lambda: set_language("english")),
-        (lambda t: "open google" in t, lambda: open_edge_website("Google", "https://google.com")),
-        (lambda t: "open youtube" in t, lambda: open_edge_website("YouTube", "https://youtube.com")),
+        (lambda t: "open google" in t, lambda: open_website("Google", "https://google.com")),
+        (lambda t: "open youtube" in t, lambda: open_website("YouTube", "https://youtube.com")),
         (lambda t: "search google" in t or "google search" in t or t.startswith("search for ") or t.startswith("search in google"), lambda: search_google(text)),
         (lambda t: "open spotify" in t, lambda: open_desktop_app("spotify", "start spotify", "Opening Spotify")),
         (lambda t: ("spotify" in t and "play" in t) or t.startswith("play spotify "), lambda: play_spotify(text)),
-        (lambda t: "open whatsapp" in t, open_whatsapp_command),
+        (lambda t: "open whatsapp" in t, lambda: open_desktop_app("whatsapp", "start whatsapp", "Opening WhatsApp")),
         (lambda t: "open notepad" in t, lambda: open_desktop_app("notepad", "notepad", "Opening Notepad")),
         (lambda t: "open calculator" in t, lambda: open_desktop_app("calculator", "calc", "Opening Calculator")),
-        (lambda t: "send message in whatsapp" in t or "send a message in whatsapp" in t or "send message on whatsapp" in t or "send a message on whatsapp" in t or "send whatsapp message" in t or "send a whatsapp message" in t, handle_whatsapp_message),
+        (lambda t: "send message in whatsapp" in t or "send whatsapp message" in t, handle_whatsapp_message),
         (lambda t: t.startswith("play "), lambda: play_youtube(text)),
         (lambda t: "open camera" in t, open_windows_camera),
         (lambda t: "take photo" in t or "click photo" in t, take_photo),
@@ -824,13 +683,13 @@ def execute_command(text: str) -> bool:
         (lambda t: "shutdown laptop" in t or "shutdown computer" in t or "turn off laptop" in t, shutdown_laptop),
         (lambda t: "restart laptop" in t or "restart computer" in t, restart_laptop),
         (lambda t: "lock laptop" in t or "lock computer" in t, lock_laptop),
-        (lambda t: "close current tab" in t or "close this tab" in t or "close single tab" in t or t == "close tab", lambda: close_current_browser_tab("edge")),
-        (lambda t: "close all tabs" in t or "close all tab" in t or "close all browser tabs" in t, lambda: close_all_browser_tabs("edge")),
-        (lambda t: "close google" in t, lambda: close_app("edge")),
-        (lambda t: "close youtube" in t, lambda: close_app("edge")),
+        (lambda t: "close current tab" in t or "close this tab" in t or "close single tab" in t or t == "close tab", close_current_browser_tab),
+        (lambda t: "close all tabs" in t or "close all tab" in t or "close all browser tabs" in t, close_all_browser_tabs),
+        (lambda t: "close google" in t, lambda: close_browser_tab_by_title("Google", ("google",))),
+        (lambda t: "close youtube" in t, lambda: close_browser_tab_by_title("YouTube", ("youtube",))),
         (lambda t: "close microsoft edge" in t or "close edge" in t, lambda: close_app("edge")),
         (lambda t: "close chrome" in t or "close google chrome" in t, lambda: close_app("chrome")),
-        (lambda t: "close browser" in t, lambda: close_app("edge")),
+        (lambda t: "close browser" in t, lambda: close_app("browser")),
         (lambda t: "close whatsapp" in t, lambda: close_app("whatsapp")),
         (lambda t: "close spotify" in t, lambda: close_app("spotify")),
         (lambda t: "close camera" in t, lambda: close_app("camera")),
@@ -873,18 +732,6 @@ def open_website(name: str, url: str) -> None:
     speak_sync(f"Opening {name}")
 
 
-def open_edge_website(name: str, url: str, announce: bool = True) -> None:
-    try:
-        subprocess.Popen(f'start msedge "{url}"', shell=True)
-    except Exception as e:
-        print("Microsoft Edge open error:", e)
-        webbrowser.open(url)
-
-    remember_opened_app("edge")
-    if announce:
-        speak_sync(f"Opening {name}")
-
-
 def open_desktop_app(app_name: str, command: str, message: str) -> None:
     os.system(command)
     remember_opened_app(app_name)
@@ -924,7 +771,8 @@ def search_google(text: str) -> None:
         return
 
     url = f"https://www.google.com/search?q={quote_plus(query)}"
-    open_edge_website("Google search", url, announce=False)
+    webbrowser.open(url)
+    remember_opened_app("browser")
     speak_sync(f"Searching Google for {query}")
 
 

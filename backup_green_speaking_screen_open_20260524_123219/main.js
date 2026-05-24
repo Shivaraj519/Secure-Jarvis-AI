@@ -76,8 +76,7 @@ const el = {
 };
 
 const viewOrder = ["home", "voice", "chat"];
-let activeView = "";
-let viewOpenTimer = 0;
+let activeView = "home";
 let voiceOpenTimer = 0;
 let clapEnabled = false;
 let lastClapAt = 0;
@@ -155,26 +154,16 @@ function speakBootLine(text, reset = false) {
 function setView(viewName) {
   const previousView = activeView;
   activeView = viewName;
-  document.querySelectorAll(".view").forEach((view) => {
-    view.classList.remove("active", "view-opening", "voice-opening");
-  });
+  document.querySelectorAll(".view").forEach((view) => view.classList.remove("active"));
   const targetView = document.getElementById(`${viewName}View`);
   targetView.classList.add("active");
-
-  if (previousView !== viewName) {
-    targetView.classList.remove("view-opening");
-    void targetView.offsetWidth;
-    targetView.classList.add("view-opening");
-    clearTimeout(viewOpenTimer);
-    viewOpenTimer = setTimeout(() => targetView.classList.remove("view-opening"), 1850);
-  }
 
   if (viewName === "voice" && previousView !== "voice") {
     targetView.classList.remove("voice-opening");
     void targetView.offsetWidth;
     targetView.classList.add("voice-opening");
     clearTimeout(voiceOpenTimer);
-    voiceOpenTimer = setTimeout(() => targetView.classList.remove("voice-opening"), 1850);
+    voiceOpenTimer = setTimeout(() => targetView.classList.remove("voice-opening"), 1400);
   }
 }
 
@@ -182,9 +171,7 @@ function openViewFromHash() {
   const viewName = window.location.hash.replace("#", "").toLowerCase();
   if (viewOrder.includes(viewName)) {
     setView(viewName);
-    return true;
   }
-  return false;
 }
 
 function switchViewByClap() {
@@ -669,10 +656,10 @@ function initParticles() {
 
     if (state.status === "speaking" || state.status === "heard") {
       return {
-        core: "rgba(52, 211, 153, ",
-        glow: "rgba(34, 197, 94, ",
-        accent: "rgba(187, 247, 208, ",
-        rgb: "52, 211, 153",
+        core: "rgba(125, 211, 252, ",
+        glow: "rgba(34, 211, 238, ",
+        accent: "rgba(226, 244, 255, ",
+        rgb: "125, 211, 252",
       };
     }
 
@@ -936,9 +923,7 @@ initParticles();
 setBackend(socket.connected);
 setStatus("sleeping", "Standing by for your command.");
 pollBackendStatus();
-if (!openViewFromHash()) {
-  setView("home");
-}
+openViewFromHash();
 
 setInterval(updateClock, 1000);
 setInterval(initWeather, 15 * 60 * 1000);

@@ -76,9 +76,7 @@ const el = {
 };
 
 const viewOrder = ["home", "voice", "chat"];
-let activeView = "";
-let viewOpenTimer = 0;
-let voiceOpenTimer = 0;
+let activeView = "home";
 let clapEnabled = false;
 let lastClapAt = 0;
 let firstClapAt = 0;
@@ -153,38 +151,9 @@ function speakBootLine(text, reset = false) {
 }
 
 function setView(viewName) {
-  const previousView = activeView;
   activeView = viewName;
-  document.querySelectorAll(".view").forEach((view) => {
-    view.classList.remove("active", "view-opening", "voice-opening");
-  });
-  const targetView = document.getElementById(`${viewName}View`);
-  targetView.classList.add("active");
-
-  if (previousView !== viewName) {
-    targetView.classList.remove("view-opening");
-    void targetView.offsetWidth;
-    targetView.classList.add("view-opening");
-    clearTimeout(viewOpenTimer);
-    viewOpenTimer = setTimeout(() => targetView.classList.remove("view-opening"), 1850);
-  }
-
-  if (viewName === "voice" && previousView !== "voice") {
-    targetView.classList.remove("voice-opening");
-    void targetView.offsetWidth;
-    targetView.classList.add("voice-opening");
-    clearTimeout(voiceOpenTimer);
-    voiceOpenTimer = setTimeout(() => targetView.classList.remove("voice-opening"), 1850);
-  }
-}
-
-function openViewFromHash() {
-  const viewName = window.location.hash.replace("#", "").toLowerCase();
-  if (viewOrder.includes(viewName)) {
-    setView(viewName);
-    return true;
-  }
-  return false;
+  document.querySelectorAll(".view").forEach((view) => view.classList.remove("active"));
+  document.getElementById(`${viewName}View`).classList.add("active");
 }
 
 function switchViewByClap() {
@@ -366,23 +335,8 @@ async function enableClapSwitch() {
 
     detect();
   } catch (error) {
-    clapEnabled = false;
-    firstClapAt = 0;
-    state.audioLevel = 0;
-    el.clapButton.textContent = "Enable Clap Switch";
-    el.clapButton.classList.remove("active");
     el.clapHint.textContent = "Microphone permission is needed for clap switching.";
-    if (clapStream) {
-      clapStream.getTracks().forEach((track) => track.stop());
-      clapStream = null;
-    }
-    if (clapAudioContext) {
-      clapAudioContext.close();
-      clapAudioContext = null;
-    }
-    if (error?.name !== "NotAllowedError") {
-      console.warn("Clap detection issue:", error);
-    }
+    console.error("Clap detection error:", error);
   }
 }
 
@@ -440,7 +394,7 @@ function initVoiceBars() {
   el.voiceBars.innerHTML = heights.map((height, index) => `<span style="--height:${height}px;--delay:${index * 48}ms"></span>`).join("");
 }
 
-function initParticlesLegacy() {
+function initParticles() {
   const canvas = el.canvas;
   const ctx = canvas.getContext("2d");
   const particles = Array.from({ length: 620 }, (_, index) => ({
@@ -620,297 +574,6 @@ function initParticlesLegacy() {
   draw();
 }
 
-function initParticles() {
-  const canvas = el.canvas;
-  const ctx = canvas.getContext("2d");
-  const rand = (min, max) => min + Math.random() * (max - min);
-  const TWO_PI = Math.PI * 2;
-
-  const particles = Array.from({ length: 980 }, (_, index) => ({
-    theta: Math.random() * TWO_PI,
-    phi: Math.acos(2 * Math.random() - 1),
-    radius: rand(0.68, 1.04),
-    size: rand(0.45, 2.25),
-    speed: rand(0.0012, 0.0048) * (index % 2 ? 1 : -1),
-    drift: rand(0.0006, 0.0026) * (index % 3 ? 1 : -1),
-    pulse: Math.random() * TWO_PI,
-    tint: Math.random(),
-  }));
-
-  const dust = Array.from({ length: 160 }, () => ({
-    x: Math.random(),
-    y: Math.random(),
-    speed: rand(0.08, 0.42),
-    size: rand(0.4, 1.8),
-    alpha: rand(0.12, 0.52),
-  }));
-
-  let tick = 0;
-
-  function resize() {
-    const rect = canvas.getBoundingClientRect();
-    const nextWidth = Math.max(1, Math.floor(rect.width * devicePixelRatio));
-    const nextHeight = Math.max(1, Math.floor(rect.height * devicePixelRatio));
-    if (canvas.width !== nextWidth || canvas.height !== nextHeight) {
-      canvas.width = nextWidth;
-      canvas.height = nextHeight;
-    }
-  }
-
-  function statusTone() {
-    if (state.status === "error") {
-      return {
-        core: "rgba(251, 113, 133, ",
-        glow: "rgba(244, 63, 94, ",
-        accent: "rgba(251, 191, 36, ",
-        rgb: "251, 113, 133",
-      };
-    }
-
-    if (state.status === "speaking" || state.status === "heard") {
-      return {
-        core: "rgba(52, 211, 153, ",
-        glow: "rgba(34, 197, 94, ",
-        accent: "rgba(187, 247, 208, ",
-        rgb: "52, 211, 153",
-      };
-    }
-
-    if (state.status === "processing" || state.status === "executing") {
-      return {
-        core: "rgba(103, 232, 249, ",
-        glow: "rgba(14, 165, 233, ",
-        accent: "rgba(226, 244, 255, ",
-        rgb: "103, 232, 249",
-      };
-    }
-
-    return {
-      core: "rgba(103, 232, 249, ",
-      glow: "rgba(34, 211, 238, ",
-      accent: "rgba(226, 244, 255, ",
-      rgb: "103, 232, 249",
-    };
-  }
-
-  function drawRadialBackground(cx, cy, width, height, boost, tone) {
-    const far = Math.max(width, height);
-    const halo = ctx.createRadialGradient(cx, cy, 6, cx, cy, far * 0.52);
-    halo.addColorStop(0, tone.core + `${0.07 + boost * 0.06})`);
-    halo.addColorStop(0.24, tone.glow + `${0.055 + boost * 0.07})`);
-    halo.addColorStop(0.52, tone.accent + `${0.018 + boost * 0.03})`);
-    halo.addColorStop(1, "rgba(1, 6, 13, 0)");
-
-    ctx.fillStyle = "rgba(1, 6, 13, 0.74)";
-    ctx.fillRect(0, 0, width, height);
-    ctx.fillStyle = halo;
-    ctx.fillRect(0, 0, width, height);
-
-  }
-
-  function drawDust(width, height, boost, tone) {
-    ctx.save();
-    dust.forEach((speck) => {
-      speck.y += (speck.speed + boost * 0.55) / height;
-      speck.x += Math.sin(tick * 0.004 + speck.y * 12) * 0.00016;
-      if (speck.y > 1.05) {
-        speck.y = -0.05;
-        speck.x = Math.random();
-      }
-
-      ctx.fillStyle = tone.glow + `${speck.alpha})`;
-      ctx.fillRect(
-        speck.x * width,
-        speck.y * height,
-        speck.size * devicePixelRatio,
-        speck.size * devicePixelRatio
-      );
-    });
-    ctx.restore();
-  }
-
-  function drawOrbit(cx, cy, radius, ratio, rotation, color, width, dash = []) {
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.rotate(rotation);
-    ctx.strokeStyle = color;
-    ctx.lineWidth = width * devicePixelRatio;
-    ctx.setLineDash(dash.map((value) => value * devicePixelRatio));
-    ctx.beginPath();
-    ctx.ellipse(0, 0, radius * devicePixelRatio, radius * ratio * devicePixelRatio, 0, 0, TWO_PI);
-    ctx.stroke();
-    ctx.restore();
-  }
-
-  function drawHudRings(cx, cy, coreRadius, boost, tone) {
-    drawOrbit(cx, cy, coreRadius * 1.28, 1, tick * 0.0032, tone.glow + `${0.34 + boost * 0.24})`, 1.3, [10, 24]);
-    drawOrbit(cx, cy, coreRadius * 1.56, 0.58, -0.34 + tick * 0.002, tone.accent + `${0.24 + boost * 0.18})`, 1.1, [24, 34]);
-    drawOrbit(cx, cy, coreRadius * 1.85, 0.28, 0.62 - tick * 0.0015, tone.core + `${0.18 + boost * 0.12})`, 0.9, [4, 18]);
-    drawOrbit(cx, cy, coreRadius * 2.12, 1, -tick * 0.0012, "rgba(255, 255, 255, 0.08)", 1, [2, 18]);
-
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.rotate(tick * 0.006);
-    for (let index = 0; index < 10; index += 1) {
-      const angle = (TWO_PI * index) / 10;
-      const inner = coreRadius * (1.93 + Math.sin(tick * 0.018 + index) * 0.035) * devicePixelRatio;
-      const outer = inner + (20 + boost * 30) * devicePixelRatio;
-      ctx.strokeStyle = index % 2 ? tone.accent + "0.36)" : tone.glow + "0.42)";
-      ctx.lineWidth = 1.4 * devicePixelRatio;
-      ctx.beginPath();
-      ctx.moveTo(Math.cos(angle) * inner, Math.sin(angle) * inner);
-      ctx.lineTo(Math.cos(angle) * outer, Math.sin(angle) * outer);
-      ctx.stroke();
-    }
-    ctx.restore();
-  }
-
-  function drawVoiceSpikes(cx, cy, radius, boost, tone) {
-    const spikes = 144;
-    const loud = state.status === "speaking" || state.status === "heard";
-
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.rotate(-tick * 0.0048);
-    ctx.lineCap = "round";
-
-    for (let index = 0; index < spikes; index += 1) {
-      const angle = (TWO_PI * index) / spikes;
-      const noise = Math.sin(tick * 0.06 + index * 0.31) * Math.cos(tick * 0.018 + index * 0.19);
-      const voice = loud ? Math.abs(Math.sin(tick * 0.09 + index * 0.42)) : 0.24;
-      const inner = (radius * 1.08 + noise * 4) * devicePixelRatio;
-      const outer = (radius * (1.18 + boost * 0.16) + voice * (26 + boost * 48)) * devicePixelRatio;
-
-      ctx.strokeStyle = index % 5 === 0 ? tone.accent + "0.78)" : tone.glow + `${0.22 + voice * 0.38})`;
-      ctx.lineWidth = (index % 5 === 0 ? 1.4 : 0.75) * devicePixelRatio;
-      ctx.beginPath();
-      ctx.moveTo(Math.cos(angle) * inner, Math.sin(angle) * inner);
-      ctx.lineTo(Math.cos(angle) * outer, Math.sin(angle) * outer);
-      ctx.stroke();
-    }
-
-    ctx.restore();
-  }
-
-  function drawSphere(cx, cy, radius, boost, tone, sleeping, speaking, thinking) {
-    const sphereRadius = radius * (0.96 + boost * 0.08) * devicePixelRatio;
-    const rotY = tick * 0.0065 * (1 + boost * 1.8);
-    const rotX = Math.sin(tick * 0.0032) * 0.46;
-
-    particles.forEach((particle, index) => {
-      particle.theta += particle.speed * (1 + boost * 4 + (thinking ? 2 : 0));
-      particle.phi += particle.drift * (1 + boost * 1.6);
-      particle.pulse += 0.014 + boost * 0.06;
-
-      const pulse = Math.sin(particle.pulse + tick * 0.017) * (speaking ? 0.055 : 0.018);
-      const r = sphereRadius * Math.min(1.08, Math.max(0.68, particle.radius + pulse));
-      let x3 = Math.sin(particle.phi) * Math.cos(particle.theta) * r;
-      let y3 = Math.cos(particle.phi) * r;
-      let z3 = Math.sin(particle.phi) * Math.sin(particle.theta) * r;
-
-      const cosY = Math.cos(rotY);
-      const sinY = Math.sin(rotY);
-      const rotatedX = x3 * cosY - z3 * sinY;
-      z3 = x3 * sinY + z3 * cosY;
-      x3 = rotatedX;
-
-      const cosX = Math.cos(rotX);
-      const sinX = Math.sin(rotX);
-      const rotatedY = y3 * cosX - z3 * sinX;
-      z3 = y3 * sinX + z3 * cosX;
-      y3 = rotatedY;
-
-      const depth = (z3 / sphereRadius + 1) / 2;
-      const perspective = 0.72 + depth * 0.46;
-      const x = cx + x3 * perspective;
-      const y = cy + y3 * perspective;
-      const alpha = sleeping ? 0.12 + depth * 0.28 : 0.2 + depth * 0.74;
-      const particleColor = particle.tint > 0.82 ? tone.accent : particle.tint > 0.62 ? tone.core : tone.glow;
-      ctx.beginPath();
-      ctx.fillStyle = particleColor + `${alpha})`;
-      ctx.shadowColor = `rgb(${tone.rgb})`;
-      ctx.shadowBlur = (sleeping ? 2 : 8 + boost * 12) * devicePixelRatio * perspective;
-      ctx.arc(x, y, particle.size * devicePixelRatio * perspective * (1 + boost * 0.32), 0, TWO_PI);
-      ctx.fill();
-    });
-    ctx.shadowBlur = 0;
-  }
-
-  function drawCore(cx, cy, radius, boost, tone, speaking) {
-    const pulse = Math.sin(tick * 0.055) * 0.07 + boost * 0.22;
-    const coreRadius = (radius * (0.23 + pulse * 0.06)) * devicePixelRatio;
-    const glowRadius = (radius * (0.55 + pulse * 0.28)) * devicePixelRatio;
-
-    const glow = ctx.createRadialGradient(cx, cy, 2, cx, cy, glowRadius);
-    glow.addColorStop(0, "rgba(255, 255, 255, 0.95)");
-    glow.addColorStop(0.18, tone.core + "0.78)");
-    glow.addColorStop(0.48, speaking ? "rgba(52, 211, 153, 0.36)" : tone.glow + "0.32)");
-    glow.addColorStop(1, "rgba(1, 6, 13, 0)");
-    ctx.fillStyle = glow;
-    ctx.beginPath();
-    ctx.arc(cx, cy, glowRadius, 0, TWO_PI);
-    ctx.fill();
-
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.rotate(tick * 0.012);
-    const blade = ctx.createLinearGradient(-coreRadius, 0, coreRadius, 0);
-    blade.addColorStop(0, "rgba(255,255,255,0)");
-    blade.addColorStop(0.5, "rgba(255,255,255,0.9)");
-    blade.addColorStop(1, "rgba(255,255,255,0)");
-    ctx.fillStyle = blade;
-    ctx.fillRect(-coreRadius * 1.2, -2 * devicePixelRatio, coreRadius * 2.4, 4 * devicePixelRatio);
-    ctx.rotate(Math.PI / 2);
-    ctx.fillRect(-coreRadius * 1.2, -2 * devicePixelRatio, coreRadius * 2.4, 4 * devicePixelRatio);
-    ctx.restore();
-  }
-
-  function drawLens(cx, cy, width, height, boost, tone) {
-    const bandY = cy + Math.sin(tick * 0.018) * height * 0.14;
-    const beam = ctx.createLinearGradient(0, bandY - 46 * devicePixelRatio, 0, bandY + 46 * devicePixelRatio);
-    beam.addColorStop(0, "rgba(255,255,255,0)");
-    beam.addColorStop(0.5, tone.glow + `${0.055 + boost * 0.06})`);
-    beam.addColorStop(1, "rgba(255,255,255,0)");
-    ctx.fillStyle = beam;
-    ctx.fillRect(0, bandY - 46 * devicePixelRatio, width, 92 * devicePixelRatio);
-
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.055)";
-    ctx.lineWidth = 1 * devicePixelRatio;
-    for (let y = 0; y < height; y += 9 * devicePixelRatio) {
-      ctx.beginPath();
-      ctx.moveTo(0, y + 0.5);
-      ctx.lineTo(width, y + 0.5);
-      ctx.stroke();
-    }
-  }
-
-  function draw() {
-    tick += 1;
-    resize();
-    const width = canvas.width;
-    const height = canvas.height;
-    const cx = width / 2;
-    const cy = height * 0.43;
-    const boost = Math.max(state.particleBoost, state.audioLevel * 0.85);
-    const sleeping = isSleepMode();
-    const speaking = state.status === "speaking" || state.status === "heard";
-    const thinking = state.status === "processing" || state.status === "executing";
-    const tone = statusTone();
-    const base = Math.min(width, height) / devicePixelRatio;
-    const coreRadius = Math.min(230, base * 0.31);
-
-    ctx.clearRect(0, 0, width, height);
-    drawRadialBackground(cx, cy, width, height, boost, tone);
-    drawSphere(cx, cy, coreRadius, boost, tone, sleeping, speaking, thinking);
-
-    requestAnimationFrame(draw);
-  }
-
-  resize();
-  addEventListener("resize", resize);
-  draw();
-}
-
 el.clapButton.addEventListener("click", enableClapSwitch);
 
 socket.on("connect", () => {
@@ -936,11 +599,7 @@ initParticles();
 setBackend(socket.connected);
 setStatus("sleeping", "Standing by for your command.");
 pollBackendStatus();
-if (!openViewFromHash()) {
-  setView("home");
-}
 
 setInterval(updateClock, 1000);
 setInterval(initWeather, 15 * 60 * 1000);
 setInterval(pollBackendStatus, 2000);
-window.addEventListener("hashchange", openViewFromHash);

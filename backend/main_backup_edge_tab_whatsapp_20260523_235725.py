@@ -10,6 +10,7 @@ import webbrowser
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Callable
+from urllib.parse import quote, quote_plus
 
 import cv2
 import edge_tts
@@ -19,13 +20,9 @@ import pygame
 import pygetwindow as gw
 import pywhatkit
 import requests
-import screen_brightness_control as sbc
 import speech_recognition as sr
-from comtypes import CLSCTX_ALL
-from ctypes import POINTER, cast
 from flask import Flask, jsonify, request
 from flask_socketio import SocketIO
-from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
 
 
 # =========================================
@@ -36,7 +33,7 @@ from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
 class JarvisConfig:
     creator_name: str = "Shivaraj"
     assistant_name: str = "Jarvis"
-    wake_words: tuple[str, ...] = ("arise", "hey jarvis")
+    wake_words: tuple[str, ...] = ("arise", "wake up jarvis", "jarvis")
     sleep_commands: tuple[str, ...] = ("sleep jarvis", "go to sleep")
     exit_commands: tuple[str, ...] = ("exit", "shutdown jarvis", "quit jarvis")
     stop_commands: tuple[str, ...] = ("stop speaking", "stop jarvis", "shut up")
@@ -139,10 +136,13 @@ OPENED_APPS: list[str] = []
 
 
 APP_PROCESSES = {
+    "browser": ["msedge.exe"],
+    "edge": ["msedge.exe"],
+    "microsoft edge": ["msedge.exe"],
     "chrome": ["chrome.exe"],
     "google": ["chrome.exe"],
     "youtube": ["chrome.exe"],
-    "whatsapp": ["WhatsApp.exe", "WhatsApp.exe"],
+    "whatsapp": ["WhatsApp.exe", "WhatsAppBeta.exe"],
     "spotify": ["Spotify.exe"],
     "camera": ["WindowsCamera.exe", "Camera.exe"],
     "vscode": ["Code.exe"],
@@ -233,7 +233,7 @@ async def speak(text: str) -> None:
 
     is_speaking = False
     send_status(
-        "sleeping" if jarvis_active else "sleeping",
+        "idle" if jarvis_active else "sleeping",
         "Waiting for your command" if jarvis_active else "Say a wake word to activate Jarvis"
     )
 
@@ -261,7 +261,7 @@ def listen(timeout: int = 5, phrase_time_limit: int = 10) -> str:
             )
         except sr.WaitTimeoutError:
             send_status(
-                "sleeping" if jarvis_active else "sleeping",
+                "idle" if jarvis_active else "sleeping",
                 "Waiting for your command" if jarvis_active else "Say a wake word to activate Jarvis"
             )
             return ""
@@ -277,7 +277,7 @@ def listen(timeout: int = 5, phrase_time_limit: int = 10) -> str:
 
     except sr.UnknownValueError:
         send_status(
-            "sleeping" if jarvis_active else "sleeping",
+            "idle" if jarvis_active else "sleeping",
             "Could not understand. Try again." if jarvis_active else "Say a wake word to activate Jarvis"
         )
         return ""
@@ -292,21 +292,6 @@ def listen(timeout: int = 5, phrase_time_limit: int = 10) -> str:
 # SYSTEM CONTROLS
 # =========================================
 
-def change_volume(up: bool = True) -> None:
-    devices = AudioUtilities.GetSpeakers()
-    interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
-    volume = cast(interface, POINTER(IAudioEndpointVolume))
-    current = volume.GetMasterVolumeLevelScalar()
-    volume.SetMasterVolumeLevelScalar(
-        min(current + 0.1, 1.0) if up else max(current - 0.1, 0.0),
-        None
-    )
-
-
-def set_brightness(delta: int) -> None:
-    current = sbc.get_brightness()[0]
-    sbc.set_brightness(max(0, min(current + delta, 100)))
-
 
 def open_uri_or_app(app_name: str, command: str) -> None:
     subprocess.Popen(command, shell=True)
@@ -320,10 +305,12 @@ def remember_opened_app(app_name: str) -> None:
 
 def close_process_by_name(process_names: list[str]) -> bool:
     closed_any = False
+    target_names = {name.lower() for name in process_names}
 
     for proc in psutil.process_iter(["pid", "name"]):
         try:
-            if proc.info["name"] in process_names:
+            process_name = str(proc.info.get("name") or "").lower()
+            if process_name in target_names:
                 proc.terminate()
                 closed_any = True
         except Exception:
@@ -358,6 +345,162 @@ def close_all_opened_apps() -> None:
         close_app(app_name)
 
     speak_sync("Closed all apps I opened")
+
+
+BROWSER_TITLE_KEYWORDS = {
+    "edge": ("microsoft edge",),
+    "microsoft edge": ("microsoft edge",),
+    "chrome": ("google chrome",),
+    "browser": ("microsoft edge", "google chrome"),
+}
+
+
+def clean_command_query(text: str, prefixes: tuple[str, ...], suffixes: tuple[str, ...] = ()) -> str:
+    query = text.strip()
+    found_prefix = False
+
+    for prefix in prefixes:
+        if query.startswith(prefix):
+            query = query[len(prefix):].strip()
+            found_prefix = True
+            break
+
+    if not found_prefix:
+        for prefix in prefixes:
+            marker = f"{prefix} "
+            marker_index = query.find(marker)
+            if marker_index >= 0:
+                query = query[marker_index + len(prefix):].strip()
+                break
+
+    for suffix in suffixes:
+        if query.endswith(suffix):
+            query = query[: -len(suffix)].strip()
+
+    return query.strip(" .?!")
+
+
+def is_browser_window_title(title: str, browser_name: str | None = None) -> bool:
+    clean_title = (title or "").lower()
+    if not clean_title:
+        return False
+
+    if browser_name:
+        return any(keyword in clean_title for keyword in BROWSER_TITLE_KEYWORDS.get(browser_name, (browser_name,)))
+
+    return any(
+        keyword in clean_title
+        for keywords in BROWSER_TITLE_KEYWORDS.values()
+        for keyword in keywords
+    )
+
+
+def activate_window(window) -> bool:
+    try:
+        if getattr(window, "isMinimized", False):
+            window.restore()
+            time.sleep(0.25)
+
+        window.activate()
+        time.sleep(0.45)
+        return True
+    except Exception as e:
+        print("Window activation error:", e)
+        return False
+
+
+def activate_window_by_title(keywords: tuple[str, ...] | list[str]) -> bool:
+    wanted = tuple(keyword.lower() for keyword in keywords)
+
+    try:
+        windows = gw.getAllWindows()
+    except Exception as e:
+        print("Window lookup error:", e)
+        return False
+
+    for window in windows:
+        title = (window.title or "").lower()
+        if title and any(keyword in title for keyword in wanted):
+            return activate_window(window)
+
+    return False
+
+
+def find_browser_window(browser_name: str | None = None):
+    try:
+        active = gw.getActiveWindow()
+        if active and is_browser_window_title(active.title, browser_name):
+            return active
+    except Exception:
+        pass
+
+    try:
+        for window in gw.getAllWindows():
+            if is_browser_window_title(window.title, browser_name):
+                return window
+    except Exception as e:
+        print("Browser window lookup error:", e)
+
+    return None
+
+
+def active_window_title() -> str:
+    try:
+        active = gw.getActiveWindow()
+        return active.title if active else ""
+    except Exception:
+        return ""
+
+
+def close_current_browser_tab(browser_name: str | None = None) -> bool:
+    browser_name = browser_name or "edge"
+    window = find_browser_window(browser_name)
+    if not window or not activate_window(window):
+        speak_sync("I could not find an open Microsoft Edge window")
+        return False
+
+    pyautogui.hotkey("ctrl", "w")
+    speak_sync("Closed the current Microsoft Edge tab")
+    return True
+
+
+def close_all_browser_tabs(browser_name: str | None = None) -> bool:
+    browser_name = browser_name or "edge"
+    window = find_browser_window(browser_name)
+    if not window or not activate_window(window):
+        speak_sync("I could not find an open Microsoft Edge window")
+        return False
+
+    pyautogui.hotkey("ctrl", "shift", "w")
+    speak_sync("Closed all tabs in the current Microsoft Edge window")
+    return True
+
+
+def close_browser_tab_by_title(site_name: str, title_keywords: tuple[str, ...], browser_name: str | None = None) -> bool:
+    window = find_browser_window(browser_name)
+    if not window or not activate_window(window):
+        speak_sync("I could not find an open browser window")
+        return False
+
+    seen_titles: set[str] = set()
+    wanted = tuple(keyword.lower() for keyword in title_keywords)
+
+    for _ in range(30):
+        title = active_window_title().lower()
+        if title and any(keyword in title for keyword in wanted):
+            pyautogui.hotkey("ctrl", "w")
+            speak_sync(f"Closed the {site_name} tab")
+            return True
+
+        if title in seen_titles:
+            break
+
+        seen_titles.add(title)
+        pyautogui.hotkey("ctrl", "tab")
+        time.sleep(0.25)
+
+    speak_sync(f"I could not find a {site_name} tab")
+    return False
 
 
 # =========================================
@@ -454,43 +597,103 @@ def record_video(seconds: int = 10) -> None:
 
 def send_whatsapp_app_message(contact_name: str, message: str) -> None:
     try:
-        send_status("executing", "Opening WhatsApp...")
-        windows = gw.getWindowsWithTitle("WhatsApp")
+        whatsapp_window = open_whatsapp_window()
 
-        if windows:
-            whatsapp_window = windows[0]
-            whatsapp_window.activate()
-            time.sleep(0.7)
-        else:
-            os.system("start whatsapp:")
-            time.sleep(5)
-            windows = gw.getWindowsWithTitle("WhatsApp")
+        if not whatsapp_window:
+            speak_sync("I could not open WhatsApp. Please open WhatsApp once, then try again.")
+            return
 
-            if not windows:
-                speak_sync("WhatsApp did not open")
-                return
-
-            whatsapp_window = windows[0]
-            whatsapp_window.activate()
-            time.sleep(1)
-
-        send_status("executing", f"Searching contact: {contact_name}")
-        pyautogui.hotkey("ctrl", "f")
-        time.sleep(0.8)
+        send_status("executing", f"Searching WhatsApp contact: {contact_name}")
+        pyautogui.hotkey("ctrl", "n")
+        time.sleep(1.0)
         pyautogui.write(contact_name, interval=0.01)
         time.sleep(1.5)
         pyautogui.press("enter")
-        time.sleep(1.5)
+        time.sleep(2.0)
 
         send_status("executing", "Typing WhatsApp message")
         pyautogui.write(message, interval=0.01)
         time.sleep(0.5)
         pyautogui.press("enter")
-        speak_sync("Message sent")
+        speak_sync("WhatsApp message sent")
 
     except Exception as e:
         print("WhatsApp error:", e)
         speak_sync("Failed to send WhatsApp message")
+
+
+def find_whatsapp_window():
+    try:
+        windows = gw.getAllWindows()
+    except Exception as e:
+        print("WhatsApp window lookup error:", e)
+        return None
+
+    for window in windows:
+        title = (window.title or "").lower()
+        if "whatsapp" in title:
+            return window
+
+    return None
+
+
+def wait_for_whatsapp_window(timeout: float = 10.0):
+    deadline = time.time() + timeout
+
+    while time.time() < deadline:
+        window = find_whatsapp_window()
+        if window:
+            return window
+        time.sleep(0.5)
+
+    return None
+
+
+def open_whatsapp_window():
+    send_status("executing", "Opening WhatsApp...")
+
+    window = find_whatsapp_window()
+    if window and activate_window(window):
+        return window
+
+    launch_attempts = [
+        lambda: os.startfile("whatsapp:"),
+        lambda: subprocess.Popen("start whatsapp:", shell=True),
+        lambda: subprocess.Popen(
+            r'explorer.exe shell:AppsFolder\5319275A.WhatsAppDesktop_cv1g1gvanyjgm!App',
+            shell=True,
+        ),
+    ]
+
+    for launch in launch_attempts:
+        try:
+            launch()
+            window = wait_for_whatsapp_window(timeout=8)
+            if window and activate_window(window):
+                return window
+        except Exception as e:
+            print("WhatsApp launch attempt failed:", e)
+
+    try:
+        pyautogui.press("win")
+        time.sleep(0.5)
+        pyautogui.write("WhatsApp", interval=0.02)
+        time.sleep(0.4)
+        pyautogui.press("enter")
+        window = wait_for_whatsapp_window(timeout=10)
+        if window and activate_window(window):
+            return window
+    except Exception as e:
+        print("WhatsApp Start menu launch failed:", e)
+
+    return None
+
+
+def open_whatsapp_command() -> None:
+    if open_whatsapp_window():
+        speak_sync("Opening WhatsApp")
+    else:
+        speak_sync("I could not open WhatsApp")
 
 
 # =========================================
@@ -526,22 +729,29 @@ def execute_command(text: str) -> bool:
         (lambda t: "date" in t or "today's date" in t, speak_current_date),
         (lambda t: "day" in t or "what is today" in t, speak_current_day),
         (lambda t: "speak english" in t, lambda: set_language("english")),
-        (lambda t: "open google" in t, lambda: open_website("Google", "https://google.com")),
-        (lambda t: "open youtube" in t, lambda: open_website("YouTube", "https://youtube.com")),
+        (lambda t: "open google" in t, lambda: open_edge_website("Google", "https://google.com")),
+        (lambda t: "open youtube" in t, lambda: open_edge_website("YouTube", "https://youtube.com")),
+        (lambda t: "search google" in t or "google search" in t or t.startswith("search for ") or t.startswith("search in google"), lambda: search_google(text)),
         (lambda t: "open spotify" in t, lambda: open_desktop_app("spotify", "start spotify", "Opening Spotify")),
-        (lambda t: "open whatsapp" in t, lambda: open_desktop_app("whatsapp", "start whatsapp", "Opening WhatsApp")),
+        (lambda t: ("spotify" in t and "play" in t) or t.startswith("play spotify "), lambda: play_spotify(text)),
+        (lambda t: "open whatsapp" in t, open_whatsapp_command),
         (lambda t: "open notepad" in t, lambda: open_desktop_app("notepad", "notepad", "Opening Notepad")),
         (lambda t: "open calculator" in t, lambda: open_desktop_app("calculator", "calc", "Opening Calculator")),
-        (lambda t: "send message in whatsapp" in t or "send whatsapp message" in t, handle_whatsapp_message),
+        (lambda t: "send message in whatsapp" in t or "send a message in whatsapp" in t or "send message on whatsapp" in t or "send a message on whatsapp" in t or "send whatsapp message" in t or "send a whatsapp message" in t, handle_whatsapp_message),
         (lambda t: t.startswith("play "), lambda: play_youtube(text)),
-        (lambda t: "brightness up" in t, lambda: brightness_command(10)),
-        (lambda t: "brightness down" in t, lambda: brightness_command(-10)),
-        (lambda t: "volume up" in t, lambda: volume_command(True)),
-        (lambda t: "volume down" in t, lambda: volume_command(False)),
         (lambda t: "open camera" in t, open_windows_camera),
         (lambda t: "take photo" in t or "click photo" in t, take_photo),
         (lambda t: "record video" in t or "take video" in t, lambda: record_video(10)),
-        (lambda t: "close google" in t or "close chrome" in t or "close youtube" in t, lambda: close_app("chrome")),
+        (lambda t: "shutdown laptop" in t or "shutdown computer" in t or "turn off laptop" in t, shutdown_laptop),
+        (lambda t: "restart laptop" in t or "restart computer" in t, restart_laptop),
+        (lambda t: "lock laptop" in t or "lock computer" in t, lock_laptop),
+        (lambda t: "close current tab" in t or "close this tab" in t or "close single tab" in t or t == "close tab", lambda: close_current_browser_tab("edge")),
+        (lambda t: "close all tabs" in t or "close all tab" in t or "close all browser tabs" in t, lambda: close_all_browser_tabs("edge")),
+        (lambda t: "close google" in t, lambda: close_app("edge")),
+        (lambda t: "close youtube" in t, lambda: close_app("edge")),
+        (lambda t: "close microsoft edge" in t or "close edge" in t, lambda: close_app("edge")),
+        (lambda t: "close chrome" in t or "close google chrome" in t, lambda: close_app("chrome")),
+        (lambda t: "close browser" in t, lambda: close_app("edge")),
         (lambda t: "close whatsapp" in t, lambda: close_app("whatsapp")),
         (lambda t: "close spotify" in t, lambda: close_app("spotify")),
         (lambda t: "close camera" in t, lambda: close_app("camera")),
@@ -580,8 +790,20 @@ def set_language(language: str) -> None:
 
 def open_website(name: str, url: str) -> None:
     webbrowser.open(url)
-    remember_opened_app("chrome")
+    remember_opened_app("browser")
     speak_sync(f"Opening {name}")
+
+
+def open_edge_website(name: str, url: str, announce: bool = True) -> None:
+    try:
+        subprocess.Popen(f'start msedge "{url}"', shell=True)
+    except Exception as e:
+        print("Microsoft Edge open error:", e)
+        webbrowser.open(url)
+
+    remember_opened_app("edge")
+    if announce:
+        speak_sync(f"Opening {name} in Microsoft Edge")
 
 
 def open_desktop_app(app_name: str, command: str, message: str) -> None:
@@ -598,26 +820,109 @@ def play_youtube(text: str) -> None:
         return
 
     pywhatkit.playonyt(song)
-    remember_opened_app("chrome")
+    remember_opened_app("browser")
     speak_sync(f"Playing {song}")
 
 
-def brightness_command(delta: int) -> None:
-    try:
-        set_brightness(delta)
-        speak_sync("Brightness increased" if delta > 0 else "Brightness decreased")
-    except Exception as e:
-        print("Brightness error:", e)
-        speak_sync("I could not change the brightness")
+def search_google(text: str) -> None:
+    query = clean_command_query(
+        text,
+        (
+            "search google for",
+            "search in google for",
+            "search in google",
+            "google search for",
+            "google search",
+            "search for",
+        ),
+    )
+
+    if not query or query == "google":
+        query = ask_for("What should I search on Google?")
+
+    if not query:
+        speak_sync("Search cancelled")
+        return
+
+    url = f"https://www.google.com/search?q={quote_plus(query)}"
+    open_edge_website("Google search", url, announce=False)
+    speak_sync(f"Searching Google for {query}")
 
 
-def volume_command(up: bool) -> None:
+def extract_spotify_song(text: str) -> str:
+    song = clean_command_query(
+        text,
+        (
+            "play spotify",
+            "spotify play",
+            "play song",
+            "play music",
+            "play",
+        ),
+        ("on spotify", "in spotify", "spotify"),
+    )
+
+    return song.strip()
+
+
+def play_spotify(text: str) -> None:
+    song = extract_spotify_song(text)
+
+    if not song:
+        song = ask_for("What should I play on Spotify?")
+
+    if not song:
+        speak_sync("Spotify play cancelled")
+        return
+
+    send_status("executing", f"Opening Spotify for {song}")
+
     try:
-        change_volume(up)
-        speak_sync("Volume increased" if up else "Volume decreased")
+        os.startfile(f"spotify:search:{quote(song)}")
+        remember_opened_app("spotify")
+        time.sleep(3.5)
+
+        if activate_window_by_title(("spotify",)):
+            pyautogui.press("enter")
+
+        speak_sync(f"Opening {song} on Spotify")
     except Exception as e:
-        print("Volume error:", e)
-        speak_sync("I could not change the volume")
+        print("Spotify app error:", e)
+        webbrowser.open(f"https://open.spotify.com/search/{quote(song)}")
+        remember_opened_app("browser")
+        speak_sync(f"Opening Spotify search for {song}")
+
+
+def confirm_laptop_action(action_name: str) -> bool:
+    speak_sync(f"Confirm {action_name}. Say confirm to continue.")
+    confirmation = listen(timeout=6, phrase_time_limit=4)
+
+    if "confirm" in confirmation:
+        return True
+
+    speak_sync(f"{action_name.capitalize()} cancelled")
+    return False
+
+
+def shutdown_laptop() -> None:
+    if not confirm_laptop_action("shutdown"):
+        return
+
+    speak_sync("Shutting down laptop")
+    os.system("shutdown /s /t 5")
+
+
+def restart_laptop() -> None:
+    if not confirm_laptop_action("restart"):
+        return
+
+    speak_sync("Restarting laptop")
+    os.system("shutdown /r /t 5")
+
+
+def lock_laptop() -> None:
+    speak_sync("Locking laptop")
+    os.system("rundll32.exe user32.dll,LockWorkStation")
 
 
 # =========================================
@@ -657,7 +962,7 @@ def get_ai_response(text: str) -> str:
                     {
                         "role": "system",
                         "content": f"""
-You are Jarvis, a concise AI assistant created by Shivaraj.
+You are {CONFIG.assistant_name}, a concise AI assistant created by {CONFIG.creator_name}.
 Current real local time: {current_time_context()}.
 
 Rules:
@@ -720,7 +1025,6 @@ def shorten_reply(reply: str) -> str:
 
 def start_jarvis() -> None:
     global jarvis_active, stop_speaking
-    asyncio.run(speak("Jarvis is Online now"))
 
     print("Jarvis online. Waiting for wake word.")
     send_status("sleeping", "Say a wake word to activate Jarvis")

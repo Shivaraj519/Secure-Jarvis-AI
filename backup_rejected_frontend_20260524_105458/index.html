@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Jarvis Control Desk</title>
+  </head>
+  <body>
+    <main class="control-desk" id="appShell" data-status="sleeping" data-view="overview">
+      <canvas class="signal-canvas" id="signalCanvas" aria-hidden="true"></canvas>
+
+      <header class="desk-header">
+        <section class="brand-lockup" aria-label="Jarvis">
+          <span class="brand-mark">J</span>
+          <div>
+            <strong>JARVIS</strong>
+            <span>Control Desk</span>
+          </div>
+        </section>
+
+        <nav class="view-tabs" aria-label="Views">
+          <button class="view-tab active" type="button" data-view-target="overview">Overview</button>
+          <button class="view-tab" type="button" data-view-target="voice">Voice</button>
+          <button class="view-tab" type="button" data-view-target="chat">Chat</button>
+        </nav>
+
+        <section class="time-block" aria-label="Current time">
+          <strong id="clockTime">--:--</strong>
+          <span id="clockDate">Loading date</span>
+        </section>
+      </header>
+
+      <section class="desk-grid">
+        <aside class="left-rail">
+          <section class="status-tile primary">
+            <span>Backend</span>
+            <strong id="backendState">Connecting</strong>
+            <p id="backendHint">Waiting for Flask Socket.IO.</p>
+          </section>
+
+          <section class="status-tile">
+            <span>Socket</span>
+            <strong id="socketState">Waiting</strong>
+          </section>
+
+          <section class="status-tile">
+            <span>Mode</span>
+            <strong id="modeState">Sleeping</strong>
+          </section>
+
+          <button class="clap-control" id="clapButton" type="button">
+            <span></span>
+            Clap Switch
+          </button>
+          <p class="microcopy" id="clapHint">Double clap changes the active view.</p>
+        </aside>
+
+        <section class="main-stage" data-panel="overview">
+          <div class="stage-heading">
+            <p>Live Operation</p>
+            <h1 id="statusHeadline">Standing By</h1>
+            <span id="statusMessage">Waiting for your command.</span>
+          </div>
+
+          <section class="signal-board" aria-label="Jarvis signal board">
+            <div class="coordinate-row">
+              <span>JRV-01</span>
+              <span id="viewLabel">Overview</span>
+              <span>Secure Link</span>
+            </div>
+            <div class="route-map">
+              <i></i>
+              <i></i>
+              <i></i>
+              <i></i>
+              <div class="route-core">
+                <strong id="coreLabel">SLEEPING</strong>
+              </div>
+            </div>
+            <div class="meter-row" id="voiceBars"></div>
+          </section>
+
+          <section class="action-grid">
+            <article>
+              <span>Google</span>
+              <strong>Edge Route</strong>
+            </article>
+            <article>
+              <span>YouTube</span>
+              <strong>Edge Route</strong>
+            </article>
+            <article>
+              <span>Spotify</span>
+              <strong>Desktop</strong>
+            </article>
+            <article>
+              <span>Shutdown</span>
+              <strong>Confirm</strong>
+            </article>
+          </section>
+        </section>
+
+        <section class="voice-focus" data-panel="voice">
+          <div class="voice-readout">
+            <span>Voice Core</span>
+            <strong id="voiceState">Sleeping</strong>
+            <p id="voiceMessage">Standing by for your command.</p>
+          </div>
+          <div class="voice-spectrum" id="voiceSpectrum"></div>
+        </section>
+
+        <section class="comms-panel" data-panel="chat">
+          <div class="panel-head">
+            <div>
+              <span>Text Channel</span>
+              <strong>Talk With Jarvis</strong>
+            </div>
+            <em id="chatStatus">Ready</em>
+          </div>
+
+          <div class="messages" id="messages">
+            <article class="message assistant">
+              <span>Jarvis</span>
+              <p>Online. Send a message and I will route it through your backend.</p>
+            </article>
+          </div>
+
+          <form class="chat-form" id="chatForm">
+            <input id="chatInput" autocomplete="off" placeholder="Ask Jarvis..." />
+            <button type="submit">Send</button>
+          </form>
+        </section>
+
+        <aside class="right-rail">
+          <section class="weather-strip">
+            <span id="weatherLocation">Bangalore, India</span>
+            <strong id="weatherTemp">--</strong>
+            <p id="weatherDetails">Fetching current weather...</p>
+          </section>
+
+          <section class="timeline-panel">
+            <div class="panel-head compact">
+              <div>
+                <span>Event Log</span>
+                <strong>Timeline</strong>
+              </div>
+            </div>
+            <div class="timeline" id="timeline"></div>
+          </section>
+        </aside>
+      </section>
+    </main>
+
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>
