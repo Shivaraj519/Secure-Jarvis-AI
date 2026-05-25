@@ -149,272 +149,26 @@ function updateClock() {
   return d;
 }
 
-let synthCtx = null;
-
-function playBootSound(type) {
-  try {
-    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-    if (!AudioContextClass) return;
-    if (!synthCtx) {
-      synthCtx = new AudioContextClass();
-    }
-    if (synthCtx.state === "suspended") {
-      synthCtx.resume();
-    }
-
-    const osc = synthCtx.createOscillator();
-    const gain = synthCtx.createGain();
-    osc.connect(gain);
-    gain.connect(synthCtx.destination);
-
-    const now = synthCtx.currentTime;
-
-    if (type === "tick") {
-      osc.type = "sine";
-      osc.frequency.setValueAtTime(880, now);
-      osc.frequency.exponentialRampToValueAtTime(1320, now + 0.08);
-      gain.gain.setValueAtTime(0.04, now);
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.08);
-      osc.start(now);
-      osc.stop(now + 0.09);
-    } else if (type === "success") {
-      osc.type = "triangle";
-      osc.frequency.setValueAtTime(523.25, now); // C5
-      osc.frequency.setValueAtTime(659.25, now + 0.08); // E5
-      osc.frequency.setValueAtTime(783.99, now + 0.16); // G5
-      osc.frequency.setValueAtTime(1046.50, now + 0.24); // C6
-      gain.gain.setValueAtTime(0.06, now);
-      gain.gain.setValueAtTime(0.06, now + 0.24);
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.5);
-      osc.start(now);
-      osc.stop(now + 0.55);
-    } else if (type === "sweep") {
-      osc.type = "sawtooth";
-      osc.frequency.setValueAtTime(100, now);
-      osc.frequency.exponentialRampToValueAtTime(400, now + 0.45);
-      
-      const filter = synthCtx.createBiquadFilter();
-      filter.type = "lowpass";
-      filter.Q.setValueAtTime(10, now);
-      filter.frequency.setValueAtTime(250, now);
-      filter.frequency.exponentialRampToValueAtTime(1600, now + 0.45);
-      
-      osc.disconnect(gain);
-      osc.connect(filter);
-      filter.connect(gain);
-      
-      gain.gain.setValueAtTime(0.06, now);
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.5);
-      osc.start(now);
-      osc.stop(now + 0.55);
-    }
-  } catch (err) {
-    console.warn("Synth blocked or failed:", err);
-  }
-}
-
-function scrambleText(element, targetText, duration = 350) {
-  if (!element) return;
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@#$%&*()_+{}[]|;:,.<>?/\\";
-  const start = performance.now();
-  const targetLength = targetText.length;
-  
-  function update(time) {
-    const elapsed = time - start;
-    const progress = Math.min(elapsed / duration, 1);
-    const decodedCount = Math.floor(progress * targetLength);
-    
-    let result = "";
-    for (let i = 0; i < targetLength; i++) {
-      if (i < decodedCount) {
-        result += targetText[i];
-      } else {
-        result += chars[Math.floor(Math.random() * chars.length)];
-      }
-    }
-    
-    element.textContent = result;
-    if (progress < 1) {
-      requestAnimationFrame(update);
-    } else {
-      element.textContent = targetText;
-    }
-  }
-  requestAnimationFrame(update);
-}
-
-const systemLogsPool = [
-  "SYS: Initializing kernel daemon...",
-  "SYS: Allocating quantum heap memory...",
-  "SYS: Scanning synaptic node pathways...",
-  "NET: Establishing secure TLS tunnel...",
-  "NET: Port 8080 local routing verified.",
-  "SEC: Decrypting local wallet lattice...",
-  "SEC: Credentials verified. Handshake OK.",
-  "CORE: Syncing speech synthesis engines...",
-  "CORE: Loading local weather coefficients...",
-  "CORE: Initializing active layout shell...",
-  "SYS: CPU core thread count: 16 active.",
-  "SYS: Memory buffer allocation 16384MB.",
-  "SYS: Core thermal junction stable at 41C.",
-  "SYS: Core base clock speed: 4.80GHz.",
-  "SEC: Firewall layer activated (Port 80/443).",
-  "NET: Flask socket server connected.",
-  "SYS: Initializing visual particle gravity...",
-  "SYS: Calibrating audio analyser fft=1024.",
-  "SYS: UI styling system: Bangalore active.",
-  "SYS: Handshake response latency: 12ms.",
-  "SYS: Checking database sync tables...",
-  "SYS: Loading contextual memory cells...",
-  "SYS: Optimizing interface rendering pipeline...",
-  "SYS: Security handshake finalized.",
-  "SYS: Core bootstrap procedure completed."
-];
-
 function runBootSequence() {
-  const bootSeq = document.getElementById("bootSequence");
-  const wrapper = document.getElementById("bootInteractiveWrapper");
-  const logContainer = document.getElementById("bootLogContainer");
-  const diagBar1 = document.getElementById("diagBar1");
-  const diagLatency = document.getElementById("diagLatency");
-  const diagMem = document.getElementById("diagMem");
-  const diagLink = document.getElementById("diagLink");
-
-  // Play initial scan sound
-  playBootSound("sweep");
-
-  // 1. Mouse interactive parallax setup
-  if (bootSeq && wrapper) {
-    const onMouseMove = (e) => {
-      const rect = bootSeq.getBoundingClientRect();
-      const x = e.clientX - rect.left - rect.width / 2;
-      const y = e.clientY - rect.top - rect.height / 2;
-      
-      const nx = x / (rect.width / 2);
-      const ny = y / (rect.height / 2);
-      
-      const rotX = -ny * 16; 
-      const rotY = nx * 18; 
-      
-      wrapper.style.transform = `rotateX(${rotX}deg) rotateY(${rotY}deg)`;
-    };
-
-    const onMouseLeave = () => {
-      wrapper.style.transform = "rotateX(0deg) rotateY(0deg)";
-    };
-
-    bootSeq.addEventListener("mousemove", onMouseMove);
-    bootSeq.addEventListener("mouseleave", onMouseLeave);
-  }
-
-  // 2. Active scrolling debug logs on the left sidebar
-  let logIndex = 0;
-  let logInterval = null;
-  if (logContainer) {
-    logInterval = setInterval(() => {
-      if (logIndex < systemLogsPool.length) {
-        const p = document.createElement("p");
-        p.className = "log-line";
-        p.textContent = systemLogsPool[logIndex];
-        logContainer.appendChild(p);
-        logContainer.scrollTop = logContainer.scrollHeight;
-        logIndex++;
-      } else {
-        clearInterval(logInterval);
-      }
-    }, 90);
-  }
-
   let index = 0;
-  let bootFinished = false;
+  speakBootLine(bootVoiceLines[0], true);
 
-  function endBootSequence() {
-    if (bootFinished) return;
-    bootFinished = true;
-    
-    if (logInterval) clearInterval(logInterval);
-    
-    if (diagLink) {
-      diagLink.textContent = "SECURED";
-      diagLink.classList.remove("text-glow-green");
-      diagLink.style.color = "#a7c957"; // theme green
-      diagLink.style.textShadow = "0 0 10px rgba(167, 201, 87, 0.7)";
-    }
-    
-    if (diagBar1) diagBar1.style.width = "100%";
-    
-    // Play final success sound
-    playBootSound("success");
-
-    // Exit transition
-    setTimeout(() => {
-      if (el.bootSequence) {
-        el.bootSequence.classList.add("finished");
-      }
-    }, 800);
-  }
-
-  // Hook up button click to immediately enter
-  const enterBtn = document.getElementById("bootEnterBtn");
-  if (enterBtn) {
-    enterBtn.addEventListener("click", () => {
-      if ("speechSynthesis" in window) {
-        window.speechSynthesis.cancel();
-      }
-      endBootSequence();
-    });
-  }
-
-  function playNextStep() {
-    if (bootFinished) return;
-
-    if (index >= bootLines.length) {
-      // Keep the boot animation screen active indefinitely until the user clicks "ENTER CONSOLE"
-      return;
-    }
-
-    // Play tick bleep
-    playBootSound("tick");
-
-    const targetText = bootLines[index];
-    scrambleText(el.bootLine, targetText, 450);
-
-    // Update Diagnostics
-    const progressPercent = Math.min(100, Math.floor((index / (bootLines.length - 1)) * 100));
-    if (diagBar1) diagBar1.style.width = `${progressPercent}%`;
-    if (diagLatency) diagLatency.textContent = `${Math.floor(10 + Math.random() * 25)}ms`;
-    if (diagMem) {
-      const currentGB = (1.2 + (progressPercent / 100) * 3.6).toFixed(1);
-      diagMem.textContent = `${currentGB} GB / 16.0 GB`;
-    }
-
-    const voiceText = bootVoiceLines[index];
+  const timer = setInterval(() => {
     index += 1;
+    el.bootLine.textContent = bootLines[index] || bootLines[bootLines.length - 1];
+    speakBootLine(bootVoiceLines[index] || bootVoiceLines[bootVoiceLines.length - 1]);
 
-    let stepProceeded = false;
-    const fallbackTimer = setTimeout(() => {
-      if (!stepProceeded) {
-        stepProceeded = true;
-        playNextStep();
-      }
-    }, 2200);
-
-    speakBootLine(voiceText, index === 1, () => {
-      clearTimeout(fallbackTimer);
-      if (!stepProceeded) {
-        stepProceeded = true;
-        setTimeout(playNextStep, 150);
-      }
-    });
-  }
-
-  // Start the voice-driven loader chain
-  playNextStep();
+    if (index >= bootLines.length - 1) {
+      clearInterval(timer);
+      setTimeout(() => {
+        el.bootSequence.classList.add("finished");
+      }, 900);
+    }
+  }, 620);
 }
 
-function speakBootLine(text, reset = false, onEndCallback = null) {
+function speakBootLine(text, reset = false) {
   if (!("speechSynthesis" in window) || !("SpeechSynthesisUtterance" in window)) {
-    if (onEndCallback) onEndCallback();
     return;
   }
 
@@ -428,14 +182,9 @@ function speakBootLine(text, reset = false, onEndCallback = null) {
     utterance.rate = 0.92;
     utterance.pitch = 0.72;
     utterance.volume = 0.78;
-    if (onEndCallback) {
-      utterance.onend = () => onEndCallback();
-      utterance.onerror = () => onEndCallback();
-    }
     window.speechSynthesis.speak(utterance);
   } catch (error) {
     console.warn("Boot voice unavailable:", error);
-    if (onEndCallback) onEndCallback();
   }
 }
 
@@ -951,10 +700,16 @@ function initParticles() {
     ctx.fillStyle = halo;
     ctx.fillRect(0, 0, w, h);
 
+    // Draw the 3 clean concentric rings
+    drawRing(cx, cy, ringBase * 1.12, sleeping ? "rgba(71, 85, 105, 0.14)" : "rgba(103, 232, 249, 0.28)", 1.2, [8, 22]);
+    drawRing(cx, cy, ringBase * 1.38, sleeping ? "rgba(51, 65, 85, 0.12)" : "rgba(45, 212, 191, 0.18)", 1, [16, 28]);
+    drawRing(cx, cy, ringBase * 1.72, sleeping ? "rgba(51, 65, 85, 0.06)" : "rgba(103, 232, 249, 0.1)", 1, [3, 18]);
+
     const points = [];
     const sphereRadius = ringBase * (1.18 + boost * 0.14) * devicePixelRatio;
-    // Constant clockwise rotation speed (does not slow down or speed up with speech)
-    const rotY = -tick * 0.005;
+    // Clockwise rotation (negative sign) with reduced speed during speaking
+    const rotYSpeed = 0.003 * (1 + boost * (speaking ? 0.2 : 1.5));
+    const rotY = -tick * rotYSpeed;
     const rotX = Math.sin(tick * 0.003) * 0.42;
 
     particles.forEach((particle, index) => {
@@ -1016,29 +771,12 @@ function initParticles() {
 
       // Reverted color scheme to original but keep shadowBlur disabled (glow off)
       ctx.beginPath();
-      let particleColor;
-      let particleShadow;
-      if (sleeping) {
-        particleColor = `rgba(100, 116, 139, ${0.1 + depth * 0.22})`;
-        particleShadow = "#334155";
-      } else if (speaking) {
-        // Green color for speaking (Mint & Emerald)
-        const greenRGB = particle.hue > 0.6 ? "52, 211, 153" : "16, 185, 129";
-        particleColor = `rgba(${greenRGB}, ${0.36 + depth * 0.6})`;
-        particleShadow = "#10b981";
-      } else if (state.status === "listening") {
-        // Blue color for listening (Electric & Royal blue)
-        const blueRGB = particle.hue > 0.6 ? "14, 165, 233" : "59, 130, 246";
-        particleColor = `rgba(${blueRGB}, ${0.36 + depth * 0.6})`;
-        particleShadow = "#3b82f6";
-      } else {
-        // Standby/thinking/else: Purple-ish
-        const purpleRGB = particle.hue > 0.6 ? "167, 139, 250" : "103, 232, 249";
-        particleColor = `rgba(${purpleRGB}, ${0.26 + depth * 0.58})`;
-        particleShadow = "#a78bfa";
-      }
-      ctx.fillStyle = particleColor;
-      ctx.shadowColor = particleShadow;
+      ctx.fillStyle = sleeping
+        ? `rgba(100, 116, 139, ${0.1 + depth * 0.22})`
+        : speaking
+          ? `rgba(${particle.hue > 0.72 ? "52, 211, 153" : "103, 232, 249"}, ${0.36 + depth * 0.6})`
+          : `rgba(${particle.hue > 0.84 ? "167, 139, 250" : "103, 232, 249"}, ${0.26 + depth * 0.58})`;
+      ctx.shadowColor = sleeping ? "#334155" : speaking ? "#34d399" : particle.hue > 0.84 ? "#a78bfa" : "#67e8f9";
       ctx.shadowBlur = 0; // Removed glow
       ctx.arc(x, y, particle.size * devicePixelRatio * perspective * (sleeping ? 0.72 : 1 + boost * 0.32), 0, Math.PI * 2);
       ctx.fill();

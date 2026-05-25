@@ -12,64 +12,11 @@
       <div class="light-field light-b"></div>
 
       <section class="boot-sequence" id="bootSequence">
-        <div class="boot-grid-bg top-grid"></div>
-        <div class="boot-grid-bg bottom-grid"></div>
-        <div class="boot-hologram-container">
-          <div class="boot-interactive-wrapper" id="bootInteractiveWrapper">
-            <div class="boot-glow-core"></div>
-            <div class="boot-ring boot-ring-1"></div>
-            <div class="boot-ring boot-ring-2"></div>
-            <div class="boot-ring boot-ring-3"></div>
-            
-            <!-- Left telemetry panel -->
-            <div class="boot-side-panel left-side">
-              <div class="side-panel-header">SYSTEM COGNITION</div>
-              <div class="boot-divider"></div>
-              <div class="log-container" id="bootLogContainer"></div>
-            </div>
-
-            <!-- Main center panel -->
-            <div class="boot-panel">
-              <div class="scan-line"></div>
-              <div class="hud-corners">
-                <span class="c-tl"></span><span class="c-tr"></span>
-                <span class="c-bl"></span><span class="c-br"></span>
-              </div>
-              <h1>JARVIS</h1>
-              <div class="boot-divider"></div>
-              <span id="bootLine">Loading neural interface...</span>
-              <div class="boot-progress"><i></i></div>
-              <button class="boot-enter-btn" id="bootEnterBtn" type="button">ENTER CONSOLE</button>
-              <div class="boot-telemetry">
-                <span>Core v9.1</span>
-                <span>Secure Link</span>
-              </div>
-            </div>
-
-            <!-- Right telemetry panel -->
-            <div class="boot-side-panel right-side">
-              <div class="side-panel-header">DIAGNOSTICS</div>
-              <div class="boot-divider"></div>
-              <div class="diag-container">
-                <div class="diag-item">
-                  <span>CORTEX SYNC</span>
-                  <div class="diag-bar"><i id="diagBar1" style="width: 0%"></i></div>
-                </div>
-                <div class="diag-item">
-                  <span>MATRIX LATENCY</span>
-                  <strong id="diagLatency">-- ms</strong>
-                </div>
-                <div class="diag-item">
-                  <span>MEM QUANTUM</span>
-                  <strong id="diagMem">-- GB / -- GB</strong>
-                </div>
-                <div class="diag-item">
-                  <span>SECURE LINK</span>
-                  <strong class="text-glow-green" id="diagLink">ESTABLISHING</strong>
-                </div>
-              </div>
-            </div>
-          </div>
+        <div class="boot-ring"></div>
+        <div class="boot-panel">
+          <h1>JARVIS</h1>
+          <span id="bootLine">Loading neural interface...</span>
+          <div class="boot-progress"><i></i></div>
         </div>
       </section>
 
@@ -231,6 +178,10 @@
             <span>J.A.R.V.I.S CORE</span>
             <strong>V9.1</strong>
           </div>
+          <div class="corner corner-tl"></div>
+          <div class="corner corner-tr"></div>
+          <div class="corner corner-bl"></div>
+          <div class="corner corner-br"></div>
           <div class="side-eq side-eq-left"></div>
           <div class="side-eq side-eq-right"></div>
 
